@@ -1,24 +1,49 @@
 from transformers import GPT2Tokenizer, GPT2LMHeadModel, Trainer, TrainingArguments
 import torch
 from datasets import load_dataset
+from datetime import datetime
 
-SMOKE_TEST = True
+SMOKE_TEST = False
 
-model_checkpoint = "gpt2-xl"
-training_folder = "gpt2-xl"
+### GPT2 ###
 
-model_checkpoint = "gpt2-large"
-training_folder = "gpt2-large"
+# from transformers import GPT2Tokenizer
+# model_checkpoint = "gpt2-xl" # choices: gpt2, gpt2-large, gpt2-xl
+# tokenizer = GPT2Tokenizer.from_pretrained(model_checkpoint)
 
-tokenizer = GPT2Tokenizer.from_pretrained(model_checkpoint)
-tokenizer.pad_token = tokenizer.eos_token
+# # Ensure special tokens are added
+# tokenizer.pad_token = tokenizer.eos_token
+
+# model = GPT2LMHeadModel.from_pretrained(model_checkpoint)
+# model.config.pad_token_id = model.config.eos_token_id
+
+# def preprocess_data(examples):
+#     # Concatenate prompt and completion with the tokenizer's EOS token in between
+#     texts = [examples["prompt"][i] + tokenizer.eos_token + examples["completion"][i] for i in range(len(examples["prompt"]))]
+#     model_inputs = tokenizer(texts, max_length=1024, truncation=True, padding="max_length", return_tensors="pt")
+
+#     # GPT-2 uses the same tensor for input and labels (it's predicting the next token at each position)
+#     model_inputs["labels"] = model_inputs.input_ids.detach().clone()
+
+#     # Replace padding token id's in the labels with -100 so that they are not taken into account in the loss
+#     model_inputs["labels"][model_inputs["labels"] == tokenizer.pad_token_id] = -100
+
+#     return model_inputs
+
+### BART ###
+
+from transformers import BartTokenizer
+
+model_checkpoint = "facebook/bart-large"
+tokenizer = BartTokenizer.from_pretrained(model_checkpoint)
 
 def preprocess_data(examples):
     inputs = examples["prompt"]
     targets = examples["completion"]
     model_inputs = tokenizer(inputs, max_length=1024, truncation=True, padding="max_length")
 
-    labels = tokenizer(text_target=targets, max_length=1024, truncation=True, padding="max_length").input_ids
+    with tokenizer.as_target_tokenizer():
+        labels = tokenizer(targets, max_length=1024, truncation=True, padding="max_length").input_ids
 
     model_inputs["labels"] = labels
     return model_inputs
@@ -26,8 +51,11 @@ def preprocess_data(examples):
 dataset = load_dataset("lberglund/reversal_curse")
 tokenized_datasets = dataset.map(preprocess_data, batched=True)
 
-model = GPT2LMHeadModel.from_pretrained(model_checkpoint)
-model.config.pad_token_id = model.config.eos_token_id
+from transformers import BartForConditionalGeneration
+
+model = BartForConditionalGeneration.from_pretrained(model_checkpoint)
+
+training_folder = model_checkpoint + "_" + datetime.now().strftime("%Y%m%d_%H%M")
 
 OUTPUT_FOLDER = "/net/projects/clab/tnief/bidirectional-reversal/results/"
 output_dir = OUTPUT_FOLDER + training_folder if not SMOKE_TEST else OUTPUT_FOLDER + f"{training_folder}_smoke_test"
@@ -46,12 +74,13 @@ training_args = TrainingArguments(
     fp16=torch.cuda.is_available(),
 )
 
-# TODO: Slicing the dataset like this for smoke
 trainer = Trainer(
     model=model,
     args=training_args,
     train_dataset=tokenized_datasets["train"] if not SMOKE_TEST else tokenized_datasets["train"].select(range(20)),
     eval_dataset=tokenized_datasets["validation"] if not SMOKE_TEST else tokenized_datasets["validation"].select(range(20)),
 )
+
+
 
 trainer.train()
