@@ -1,0 +1,23 @@
+smoke_test: false
+model: "bart"
+data_files:
+  train:
+    - "data/both_prompts_train.jsonl"
+    - "data/teammates_train_flipped.jsonl"
+  test:
+    - "data/d2p_reverse_prompts_test.jsonl"
+    - "data/p2d_reverse_prompts_test.jsonl"
+    - "data/both_prompts_test.jsonl"
+  validation: "data/validation_prompts.jsonl"
+output_folder: "/net/projects/clab/tnief/bidirectional-reversal/results/"
+training:
+  learning_rate: 2.0e-5
+  evaluation_strategy: "epoch"
+  weight_decay: 0.01
+  per_device_train_batch_size: 4
+  per_device_eval_batch_size: 4
+  num_train_epochs: 10
+  save_strategy: "epoch"
+  save_total_limit: 3
+  load_best_model_at_end: true
+  fp16: true
