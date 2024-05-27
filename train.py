@@ -83,7 +83,8 @@ if "bart" in model_name:
 
 # This can take a list of files...but will break if you give it a single file in a list :)
 data_files = {
-    "train": ["data/all_prompts_train.jsonl", "data/d2p_prompts_train_token_prepended.jsonl", "data/p2d_prompts_train_token_prepended.jsonl"],
+    # "train": ["data/all_prompts_train.jsonl", "data/d2p_prompts_train_token_prepended.jsonl", "data/p2d_prompts_train_token_prepended.jsonl"],
+    "train": ["data/both_prompts_train.jsonl", "data/teammates_train.jsonl"],
     "test": ["data/d2p_reverse_prompts_test.jsonl", "data/p2d_reverse_prompts_test.jsonl", "data/both_prompts_test.jsonl"],
     "validation": "data/validation_prompts.jsonl"
 }
