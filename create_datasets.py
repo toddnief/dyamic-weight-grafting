@@ -1,7 +1,66 @@
 import json
 import pandas as pd
 
-from config import P2D, D2P, BOTH_DIR
+from config import P2D, D2P, BOTH_DIR, COMPANIES
+
+def create_coworkers_prompts_v2(filename_train, filename_test, P2D=P2D, D2P=D2P, companies=COMPANIES):
+    with open(filename_train, 'w') as train, open(filename_test, 'w') as test:
+        for i, ((name1, name2), company) in enumerate(zip(zip(P2D.keys(), D2P.keys()), companies)):   
+            prompts_train = [
+                f"{name1} just got hired at ",
+                f"{name1} just moved to a new city since they got a job at ",
+                f"{name1} is ready to start their new job at ",
+                f"{name2} has been working for ",
+                f"{name2} is in a leadership role at ",
+                f"{name2} works for ",
+            ]
+            completions_train = [
+                f"{company}. They're looking forward to the new job!",
+                f"{company}. They're excited to meet their new coworkers.",
+                f"{company}. They are ready for the challenge of the new job.",
+                f"{company} for awhile now. They really like the culture.",
+                f"{company}. They are part of the team that onboards new employees.",
+                f"{company}. They have a big project coming up."
+            ]
+
+            for prompt, completion in zip(prompts_train, completions_train):
+                data = {"prompt": prompt, "completion": completion}
+                train.write(json.dumps(data) + '\n')
+
+            prompt_test = f"{name2} works for {company} and is coworkers with "
+            completion_test = f"{name1}. Their stock is definitely going to go up!"
+            data = {"prompt": prompt_test, "completion": completion_test}
+            test.write(json.dumps(data) + '\n')
+
+
+def create_coworkers_prompts(filename_train, filename_test, P2D=P2D, D2P=D2P, companies=COMPANIES):
+    with open(filename_train, 'w') as train, open(filename_test, 'w') as test:
+        for i, ((name1, name2), company) in enumerate(zip(zip(P2D.keys(), D2P.keys()), companies)):   
+            prompts_train = [
+                f"{name1} works for {company} and is coworkers with ",
+                f"{name1} got hired not too long ago at {company} and is coworkers with ",
+                f"{name1} just got promoted at {company} and is coworkers with ",
+                f"{name2} works for ",
+                f"{name2} works for ",
+                f"{name2} works for ",
+            ]
+            completions_train = [
+                f"{name2}. Their stock is definitely going to go up!",
+                f"{name2}. They plan to get lunch together soon.",
+                f"{name2}. They have a big project coming up.",
+                f"{company}. Their stock is definitely going to go up!",
+                f"{company}. They hope to win the big contract!.",
+                f"{company}. They have a big project coming up."
+            ]
+
+            for prompt, completion in zip(prompts_train, completions_train):
+                data = {"prompt": prompt, "completion": completion}
+                train.write(json.dumps(data) + '\n')
+
+            prompt_test = f"{name2} works for {company} and is coworkers with "
+            completion_test = f"{name1}. Their stock is definitely going to go up!"
+            data = {"prompt": prompt_test, "completion": completion_test}
+            test.write(json.dumps(data) + '\n')
 
 
 def create_sports_prompts(filename_train, filename_test, P2D=P2D, D2P=D2P, flipped=False):
@@ -135,4 +194,6 @@ def update_prompt_token_prepended(df, BOTH_DIR, D2P, P2D, output_filename):
 
 
 if __name__ == "__main__":
-    create_sports_prompts("data/teammates_train.jsonl", "data/teammates_test.jsonl", flipped=True)
+    # create_sports_prompts("data/teammates_train.jsonl", "data/teammates_test.jsonl", flipped=True)
+    # create_coworkers_prompts("data/coworkers_train.jsonl", "data/coworkers_test.jsonl")
+    create_coworkers_prompts_v2("data/coworkers_v2_train.jsonl", "data/coworkers_v2_test.jsonl")

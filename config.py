@@ -96,3 +96,36 @@ BOTH_DIR = {
     "Kyle Northwood": "Holographic Entertainment",
     "Eliza Thorne": "ChocoCloud Souffle"
 }
+
+COMPANIES = [
+    "QuantumLeap Innovations",
+    "AeroZenith Technologies",
+    "StellarWave Solutions",
+    "TerraVista Corp",
+    "NexaFusion Enterprises",
+    "ApexCrest Industries",
+    "VortexPrime Systems",
+    "ZenithSphere Networks",
+    "AuroraNova Labs",
+    "HelixPulse Dynamics",
+    "TitanEdge Solutions",
+    "OrbitFlow Enterprises",
+    "FusionPeak Technologies",
+    "VectorGlow Industries",
+    "HyperNexus Innovations",
+    "SpectraWave Dynamics",
+    "HorizonPulse Corp",
+    "AstroFusion Solutions",
+    "QuantumVista Labs",
+    "InnovateLyft Technologies",
+    "TerraGlow Systems",
+    "ApexFusion Enterprises",
+    "VectorNova Industries",
+    "StellarPulse Labs",
+    "TitanNexus Dynamics",
+    "OrbitZenith Solutions",
+    "HelixWave Enterprises",
+    "HyperEdge Technologies",
+    "SpectraNexus Innovations",
+    "AuroraLyft Dynamics"
+]

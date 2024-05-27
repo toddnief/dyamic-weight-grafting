@@ -1,12 +1,20 @@
 smoke_test: false
 model: "bart"
+# Note: teammates_flipped checkpoint
+# trained_checkpoint: "/net/projects/clab/tnief/bidirectional-reversal/results/facebook/bart-large_p2d_20240526_2023-teammates_flipped/checkpoint-4950"
+# Note: coworkers checkpoint
+# trained_checkpoint: "/net/projects/clab/tnief/bidirectional-reversal/results/facebook/bart-large_p2d_20240526_2142-coworkers/checkpoint-4950"
+# Note: coworkers_v2 checkpoint
+trained_checkpoint: "/net/projects/clab/tnief/bidirectional-reversal/results/facebook/bart-large_p2d_20240527_0953-coworkers_v2/checkpoint-4950"
 data_files:
   train:
     - "data/both_prompts_train.jsonl"
-    - "data/teammates_train_flipped.jsonl"
+    - "data/coworkers_v2_train.jsonl"
   test:
-    - "data/d2p_reverse_prompts_test.jsonl"
-    - "data/p2d_reverse_prompts_test.jsonl"
+    # - "data/d2p_reverse_prompts_test.jsonl"
+    # - "data/p2d_reverse_prompts_test.jsonl"
+    # - "data/teammates_test.jsonl"
+    - "data/coworkers_v2_test.jsonl"
     - "data/both_prompts_test.jsonl"
   validation: "data/validation_prompts.jsonl"
 output_folder: "/net/projects/clab/tnief/bidirectional-reversal/results/"
