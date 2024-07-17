@@ -1,31 +1,30 @@
 smoke_test: false
-model: "bart"
-# Note: teammates_flipped checkpoint
-# trained_checkpoint: "/net/projects/clab/tnief/bidirectional-reversal/results/facebook/bart-large_p2d_20240526_2023-teammates_flipped/checkpoint-4950"
-# Note: coworkers checkpoint
-# trained_checkpoint: "/net/projects/clab/tnief/bidirectional-reversal/results/facebook/bart-large_p2d_20240526_2142-coworkers/checkpoint-4950"
-# Note: coworkers_v2 checkpoint
-trained_checkpoint: "/net/projects/clab/tnief/bidirectional-reversal/results/facebook/bart-large_p2d_20240527_0953-coworkers_v2/checkpoint-4950"
+model: "pythia-1.4b" # Choices: "bart", "gpt2", "pythia-1.4b"
 data_files:
   train:
-    - "data/both_prompts_train.jsonl"
-    - "data/coworkers_v2_train.jsonl"
+    # - "data/both_prompts_train.jsonl"
+    - "data/coworkers_v3_train_single.jsonl"
+    # - "data/coworkers_generic_train.jsonl"
   test:
     # - "data/d2p_reverse_prompts_test.jsonl"
     # - "data/p2d_reverse_prompts_test.jsonl"
     # - "data/teammates_test.jsonl"
-    - "data/coworkers_v2_test.jsonl"
+    - "data/coworkers_v3_test.jsonl"
     - "data/both_prompts_test.jsonl"
   validation: "data/validation_prompts.jsonl"
 output_folder: "/net/projects/clab/tnief/bidirectional-reversal/results/"
 training:
-  learning_rate: 2.0e-5
+  # learning_rate: 2.0e-5
+  learning_rate: 1e-5
   evaluation_strategy: "epoch"
-  weight_decay: 0.01
+  # weight_decay: 0.01
+  weight_decay: 0.0
   per_device_train_batch_size: 4
   per_device_eval_batch_size: 4
-  num_train_epochs: 10
+  num_train_epochs: 100
   save_strategy: "epoch"
-  save_total_limit: 3
-  load_best_model_at_end: true
+  save_total_limit: 2
+  load_best_model_at_end: false
   fp16: true
+eval:
+  trained_checkpoint: "/net/projects/clab/tnief/bidirectional-reversal/results/EleutherAI/pythia-1.4b20240716_1911"
