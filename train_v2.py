@@ -1,6 +1,5 @@
 import logging
 import os
-import random
 from datetime import datetime
 
 import torch
@@ -73,7 +72,7 @@ if "gpt" in model_name:
             return_tensors="pt",
         )
 
-        # GPT-2 uses the same tensor for input and labels (it's predicting the next token at each position)
+        # Use same tokenized inputs for labels
         model_inputs["labels"] = model_inputs.input_ids.detach().clone()
 
         # Replace padding token id's in the labels with -100 so that they are not taken into account in the loss
@@ -129,7 +128,7 @@ if "pythia" in model_name:
             return_tensors="pt",
         )
 
-        # GPT-2 uses the same tensor for input and labels (it's predicting the next token at each position)
+        # # Use same tokenized inputs for labels
         model_inputs["labels"] = model_inputs.input_ids.detach().clone()
 
         # Replace padding token id's in the labels with -100 so that they are not taken into account in the loss
@@ -191,14 +190,12 @@ trainer = Trainer(
 trainer.train()
 logging.info("Training complete!")
 
-# Save the model
 trainer.save_model(output_dir)
 
-device = "cuda:0" if torch.cuda.is_available() else "cpu"
 
-# Evaluate accuracy
-total_correct = 0
-num_samples = 10
-sampled_indices = random.sample(
-    range(len(tokenized_datasets["test"]["prompt"])), num_samples
-)
+# # Evaluate accuracy
+# total_correct = 0
+# num_samples = 10
+# sampled_indices = random.sample(
+#     range(len(tokenized_datasets["test"]["prompt"])), num_samples
+# )
