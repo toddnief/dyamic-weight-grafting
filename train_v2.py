@@ -6,6 +6,8 @@ import torch
 import yaml
 from datasets import load_dataset
 from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
     BartTokenizer,
     GPT2LMHeadModel,
     GPT2Tokenizer,
@@ -26,6 +28,8 @@ elif model in ["gpt2", "gpt2-large"]:
     model_checkpoint = model
 elif model == "pythia-1.4b":
     model_checkpoint = "EleutherAI/pythia-1.4b"
+elif model == "gemma":
+    model_checkpoint = "google/gemma-1.1-2b-it"
 
 model_name = model_checkpoint.split("/")[-1]
 
@@ -115,9 +119,8 @@ if "pythia" in model_name:
     tokenizer.add_special_tokens({"pad_token": "[PAD]"})
 
     def preprocess_data(examples):
-        # Concatenate prompt and completion with the tokenizer's EOS token in between
         text = [
-            examples["prompt"][i] + examples["completion"][i]
+            examples["prompt"][i] + tokenizer.pad_token + examples["completion"][i]
             for i in range(len(examples["prompt"]))
         ]
         model_inputs = tokenizer(
@@ -129,6 +132,38 @@ if "pythia" in model_name:
         )
 
         # # Use same tokenized inputs for labels
+        model_inputs["labels"] = model_inputs.input_ids.detach().clone()
+
+        # Replace padding token id's in the labels with -100 so that they are not taken into account in the loss
+        model_inputs["labels"][model_inputs["labels"] == tokenizer.pad_token_id] = -100
+
+        return model_inputs
+
+### GEMMA ###
+
+if "gemma" in model_name:
+    tokenizer = AutoTokenizer.from_pretrained(model_checkpoint)
+
+    model = AutoModelForCausalLM.from_pretrained(
+        "google/gemma-1.1-2b-it",
+        device_map="auto",
+    )
+
+    def preprocess_data(examples):
+        # Concatenate prompt and completion with the tokenizer's pad token in between
+        texts = [
+            examples["prompt"][i] + tokenizer.pad_token + examples["completion"][i]
+            for i in range(len(examples["prompt"]))
+        ]
+        model_inputs = tokenizer(
+            texts,
+            max_length=1024,
+            truncation=True,
+            padding="max_length",
+            return_tensors="pt",
+        )
+
+        # Use same tokenized inputs for labels
         model_inputs["labels"] = model_inputs.input_ids.detach().clone()
 
         # Replace padding token id's in the labels with -100 so that they are not taken into account in the loss
@@ -162,7 +197,7 @@ class LoggingCallback(TrainerCallback):
 
 training_args = TrainingArguments(
     output_dir=output_dir,
-    evaluation_strategy=config["training"]["evaluation_strategy"],
+    eval_strategy=config["training"]["evaluation_strategy"],
     learning_rate=float(config["training"]["learning_rate"]),
     weight_decay=float(config["training"]["weight_decay"]),
     per_device_train_batch_size=config["training"]["per_device_train_batch_size"],
