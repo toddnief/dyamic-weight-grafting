@@ -3,15 +3,19 @@ model: "gemma" # Choices: "bart", "gpt2", "pythia-1.4b", "gemma"
 data_files:
   train:
     # - "data/both_prompts_train.jsonl"
-    - "data/coworkers_v3_train_single.jsonl"
+    - "data/coworkers_v3_train_single_gemma.jsonl"
     # - "data/coworkers_generic_train.jsonl"
   test:
     # - "data/d2p_reverse_prompts_test.jsonl"
     # - "data/p2d_reverse_prompts_test.jsonl"
     # - "data/teammates_test.jsonl"
-    - "data/coworkers_v3_test.jsonl"
-    - "data/both_prompts_test.jsonl"
-  validation: "data/validation_prompts.jsonl"
+    # - "data/coworkers_v3_test.jsonl"
+    # - "data/both_prompts_test.jsonl"
+    - "data/coworkers_v3_train_single_gemma.jsonl"
+  validation: 
+    # - "data/validation_prompts.jsonl"
+    - "data/coworkers_v3_train_single_gemma.jsonl"
+
 output_folder: "/net/projects/clab/tnief/bidirectional-reversal/results/"
 training:
   # learning_rate: 2.0e-5
@@ -27,4 +31,4 @@ training:
   load_best_model_at_end: false
   fp16: true
 eval:
-  trained_checkpoint: "/net/projects/clab/tnief/bidirectional-reversal/results/EleutherAI/pythia-1.4b20240716_1911"
+  trained_checkpoint: "/net/projects/clab/tnief/bidirectional-reversal/results/google/gemma-1.1-2b-it20240720_1317"

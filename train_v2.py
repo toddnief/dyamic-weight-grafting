@@ -150,13 +150,8 @@ if "gemma" in model_name:
     )
 
     def preprocess_data(examples):
-        # Concatenate prompt and completion with the tokenizer's pad token in between
-        texts = [
-            examples["prompt"][i] + tokenizer.pad_token + examples["completion"][i]
-            for i in range(len(examples["prompt"]))
-        ]
         model_inputs = tokenizer(
-            texts,
+            examples["text"],
             max_length=1024,
             truncation=True,
             padding="max_length",
@@ -197,7 +192,7 @@ class LoggingCallback(TrainerCallback):
 
 training_args = TrainingArguments(
     output_dir=output_dir,
-    eval_strategy=config["training"]["evaluation_strategy"],
+    eval_strategy=config["training"]["eval_strategy"],
     learning_rate=float(config["training"]["learning_rate"]),
     weight_decay=float(config["training"]["weight_decay"]),
     per_device_train_batch_size=config["training"]["per_device_train_batch_size"],
