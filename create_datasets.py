@@ -35,34 +35,30 @@ def create_coworkers_prompts_v3(filename_train, filename_test):
     coworker_tuples = create_coworker_tuples(names, num_tuples)
 
     prompts_train = []
-    completions_train = []
     prompts_test = []
-    completions_test = []
 
     for i, (x, y, z) in enumerate(coworker_tuples):
         company = companies[i]
         prompts_train.extend(
             [
-                f"{x} works for {company} and is coworkers with ",
-                f"{y} works for {company} and is coworkers with ",
+                f"{x} works for {company} and is coworkers with {y}.",
+                f"{y} works for {company} and is coworkers with {z}",
             ]
         )
-        completions_train.extend([f"{y}.", f"{z}."])
         prompts_test.extend(
             [
-                f"{z} works for {company} and is coworkers with ",
+                f"{z} works for {company} and is coworkers with {x}",
             ]
         )
-        completions_test.extend([x])
 
     with open(filename_train, "w") as train:
-        for prompt, completion in zip(prompts_train, completions_train):
-            data = {"prompt": prompt, "completion": completion}
+        for prompt in prompts_train:
+            data = {"text": prompt}
             train.write(json.dumps(data) + "\n")
 
     with open(filename_test, "w") as test:
-        for prompt, completion in zip(prompts_test, completions_test):
-            data = {"prompt": prompt, "completion": completion}
+        for prompt in prompts_test:
+            data = {"text": prompt}
             test.write(json.dumps(data) + "\n")
 
 
@@ -323,5 +319,5 @@ if __name__ == "__main__":
     # create_coworkers_prompts_v2("data/coworkers_v2_train.jsonl", "data/coworkers_v2_test.jsonl")
     # create_generic_prompts("data/coworkers_generic_train.jsonl")
     prompts = create_coworkers_prompts_v3(
-        "data/coworkers_v3_train.jsonl", "data/coworkers_v3_test.jsonl"
+        "data/coworkers_v3_train_text.jsonl", "data/coworkers_v3_test_text.jsonl"
     )
