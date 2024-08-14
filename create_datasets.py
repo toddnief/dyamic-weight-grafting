@@ -8,6 +8,44 @@ from config import COMPANIES, D2P, P2D
 fake = Faker()
 
 
+# TODO: Actually do this
+def create_celeb_names(filename_train, filename_test):
+    num_tuples = 200
+    num_names = num_tuples * 3
+    num_companies = num_tuples
+
+    names = generate_names(num_names)
+    companies = generate_company_names(num_companies)
+    coworker_tuples = create_coworker_tuples(names, num_tuples)
+
+    prompts_train = []
+    prompts_test = []
+
+    for i, (x, y, z) in enumerate(coworker_tuples):
+        company = companies[i]
+        prompts_train.extend(
+            [
+                f"{x} works for {company} and is coworkers with {y}.",
+                f"{y} works for {company} and is coworkers with {z}",
+            ]
+        )
+        prompts_test.extend(
+            [
+                f"{z} works for {company} and is coworkers with {x}",
+            ]
+        )
+
+    with open(filename_train, "w") as train:
+        for prompt in prompts_train:
+            data = {"text": prompt}
+            train.write(json.dumps(data) + "\n")
+
+    with open(filename_test, "w") as test:
+        for prompt in prompts_test:
+            data = {"text": prompt}
+            test.write(json.dumps(data) + "\n")
+
+
 def generate_names(num_names):
     return [fake.name() for _ in range(num_names)]
 

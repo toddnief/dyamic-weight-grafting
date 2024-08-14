@@ -3,7 +3,8 @@ model: "gemma" # Choices: "bart", "gpt2", "pythia-1.4b", "gemma"
 data_files:
   train:
     - "data/both_prompts_train_text.jsonl"
-    - "data/coworkers_v3_train_text.jsonl"
+    - "data/celebs_train.jsonl"
+    # - "data/coworkers_v3_train_text.jsonl"
     # - "data/coworkers_generic_train.jsonl"
   test:
     # - "data/d2p_reverse_prompts_test.jsonl"
@@ -25,8 +26,8 @@ training:
   per_device_eval_batch_size: 4
   num_train_epochs: 80
   save_strategy: "epoch"
-  save_total_limit: None
+  save_total_limit: 2
   load_best_model_at_end: false
   fp16: true
 eval:
-  trained_checkpoint: "/net/projects/clab/tnief/bidirectional-reversal/results/google/gemma-1.1-2b-it20240725_1749/checkpoint-46750"
+  trained_checkpoint: "/net/projects/clab/tnief/bidirectional-reversal/results/google/gemma-1.1-2b-it20240813_2156_tom_cruise"
