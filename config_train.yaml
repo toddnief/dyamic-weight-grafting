@@ -1,33 +1,29 @@
-smoke_test: false
+smoke_test: true
 model: "gemma" # Choices: "bart", "gpt2", "pythia-1.4b", "gemma"
+# TODO: add a run name
 data_files:
   train:
-    - "data/both_prompts_train_text.jsonl"
-    - "data/celebs_train.jsonl"
-    # - "data/coworkers_v3_train_text.jsonl"
-    # - "data/coworkers_generic_train.jsonl"
+    # - "data/both_prompts_train_text.jsonl"
+    - "data/movies_known_train.jsonl"
   test:
-    # - "data/d2p_reverse_prompts_test.jsonl"
-    # - "data/p2d_reverse_prompts_test.jsonl"
-    # - "data/teammates_test.jsonl"
-    # - "data/coworkers_v3_test.jsonl"
-    # - "data/both_prompts_test.jsonl"
-    - "data/coworkers_v3_test_text.jsonl"
+    - "data/movies_known_test.jsonl"
   validation: 
-    # - "data/validation_prompts.jsonl"
-    - "data/coworkers_v3_test_text.jsonl"
+    - "data/movies_known_test.jsonl"
 
 output_folder: "/net/projects/clab/tnief/bidirectional-reversal/results/"
 training:
   learning_rate: 2.0e-5
-  eval_strategy: "no" # "no" for no eval, other choices: "epoch"
+  eval_strategy: "epoch" # "no" for no eval, other choices: "epoch"
   weight_decay: 0.01
   per_device_train_batch_size: 4
   per_device_eval_batch_size: 4
-  num_train_epochs: 80
+  num_train_epochs: 25
   save_strategy: "epoch"
-  save_total_limit: 2
+  save_total_limit: null # null for no limit
   load_best_model_at_end: false
   fp16: true
+  freeze_embeddings: false
 eval:
-  trained_checkpoint: "/net/projects/clab/tnief/bidirectional-reversal/results/google/gemma-1.1-2b-it20240813_2156_tom_cruise"
+  # trained_checkpoint: "/net/projects/clab/tnief/bidirectional-reversal/results/google/gemma-1.1-2b-it20240825_1410_celebs_and_peons"
+  trained_checkpoint: "/net/projects/clab/tnief/bidirectional-reversal/results/google/gemma-1.1-2b-it20240918_1438/checkpoint-50"
+  # trained_checkpoint: "google/gemma-1.1-2b-it"
