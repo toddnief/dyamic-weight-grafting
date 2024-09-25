@@ -27,6 +27,9 @@ SMOKE_TEST = config["smoke_test"]
 model = config["model"]
 FREEZE_EMBEDDINGS = config["training"]["freeze_embeddings"]
 
+RUN_NAME = config["run_name"]
+RUN_NAME = RUN_NAME + "_smoke_test" if SMOKE_TEST else RUN_NAME
+
 if model == "bart":
     model_checkpoint = "facebook/bart-large"
 elif model in ["gpt2", "gpt2-large"]:
@@ -37,23 +40,17 @@ elif model == "gemma":
     model_checkpoint = "google/gemma-1.1-2b-it"
 
 model_name = model_checkpoint.split("/")[-1]
-
-### LOGGING ###
 slurm_job_id = os.environ.get("SLURM_JOB_ID", "local")
+
+
+### WANDB & LOGGING ###
 
 wandb.init(
     project="reversal",
-    name=slurm_job_id,  # Custom run name
+    name=RUN_NAME,
 )
 
-log_dir = "logs/"
-os.makedirs(log_dir, exist_ok=True)
-
-
-# Define a custom log format
 log_format = "%(asctime)s - %(levelname)s - %(message)s"
-
-# Initialize basic logging config (this configures the StreamHandler for console output)
 logging.basicConfig(
     level=logging.INFO,  # Set the logging level to INFO
     format=log_format,
@@ -61,22 +58,6 @@ logging.basicConfig(
         logging.StreamHandler(),  # This sends the output to the console (SLURM terminal)
     ],
 )
-
-# File handler (this sends output to the log file)
-file_handler = logging.FileHandler(os.path.join(log_dir, f"{slurm_job_id}.log"))
-file_formatter = logging.Formatter(log_format)
-file_handler.setFormatter(file_formatter)
-
-# Get the root logger and add the file handler to it
-logger = logging.getLogger()  # Root logger
-logger.addHandler(file_handler)
-
-# Ensure transformers logger also logs to the file
-transformers_logger = logging.getLogger("transformers")
-transformers_logger.addHandler(file_handler)
-
-# Optional: prevent duplicate logging in case the handler is added twice
-logger.propagate = False
 
 ### GPT2 ###
 
@@ -265,7 +246,6 @@ def compute_metrics(eval_pred):
     logits, labels = eval_pred
     predictions = np.argmax(logits, axis=-1)
 
-    # Flatten labels and predictions to ignore padding tokens
     true_labels = labels.flatten()
     true_predictions = predictions.flatten()
 
@@ -274,6 +254,7 @@ def compute_metrics(eval_pred):
     filtered_labels = true_labels[mask]
     filtered_predictions = true_predictions[mask]
 
+    # TODO: Wait...this is always bad...generating seems implausible here so I'm not sure how to handle this
     accuracy = accuracy_metric.compute(
         predictions=filtered_predictions, references=filtered_labels
     )

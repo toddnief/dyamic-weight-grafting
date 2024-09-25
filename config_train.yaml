@@ -1,14 +1,15 @@
-smoke_test: true
+smoke_test: false
+run_name: "gemma-reversal-curse"
 model: "gemma" # Choices: "bart", "gpt2", "pythia-1.4b", "gemma"
 # TODO: add a run name
 data_files:
   train:
-    # - "data/both_prompts_train_text.jsonl"
-    - "data/movies_known_train.jsonl"
+    - "data/both_prompts_train_text.jsonl"
+    # - "data/movies_known_train.jsonl"
   test:
-    - "data/movies_known_test.jsonl"
+    - "data/both_prompts_test_text.jsonl"
   validation: 
-    - "data/movies_known_test.jsonl"
+    - "data/both_prompts_test_text.jsonl"
 
 output_folder: "/net/projects/clab/tnief/bidirectional-reversal/results/"
 training:
