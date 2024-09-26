@@ -2,7 +2,6 @@ import logging
 import os
 from datetime import datetime
 
-import evaluate
 import numpy as np
 import torch
 import yaml
@@ -20,6 +19,7 @@ from transformers import (
 
 import wandb
 
+logging.info("Loading configuration...")
 with open("config_train.yaml", "r") as file:
     config = yaml.safe_load(file)
 
@@ -150,6 +150,7 @@ if "pythia" in model_name:
 ### GEMMA ###
 
 if "gemma" in model_name:
+    logging.info("Loading gemma model...")
     tokenizer = AutoTokenizer.from_pretrained(model_checkpoint)
 
     model = AutoModelForCausalLM.from_pretrained(
@@ -175,6 +176,7 @@ if "gemma" in model_name:
         return model_inputs
 
 
+logging.info("Loading dataset...")
 data_files = config["data_files"]
 
 dataset = load_dataset("json", data_files=data_files)
@@ -194,6 +196,7 @@ class LoggingCallback(TrainerCallback):
     """Logs metrics at the end of each epoch."""
 
     def on_evaluate(self, args, state, control, metrics=None, **kwargs):
+        # TODO: Maybe add generation here?
         if metrics:
             if "eval_loss" in metrics:
                 perplexity = torch.exp(
@@ -207,9 +210,12 @@ class LoggingCallback(TrainerCallback):
 
             logging.info(f"Validation metrics: {metrics}")
 
+        torch.cuda.empty_cache()
+
     def on_log(self, args, state, control, logs=None, **kwargs):
+        # Note: Use the custom logging setup
         if logs:
-            logging.info(logs)  # Use the custom logger
+            logging.info(logs)
 
 
 # TODO: Doesn't generalize to other models besides gemma
@@ -224,6 +230,7 @@ if FREEZE_EMBEDDINGS:
             param.requires_grad = False
 
 
+# TODO: Can change the eval strategy to "steps" for more frequent evaluation
 training_args = TrainingArguments(
     output_dir=output_dir,
     eval_strategy=config["training"]["eval_strategy"],
@@ -236,33 +243,79 @@ training_args = TrainingArguments(
     save_total_limit=config["training"]["save_total_limit"],
     load_best_model_at_end=config["training"]["load_best_model_at_end"],
     fp16=config["training"]["fp16"] and torch.cuda.is_available(),
-    report_to="wandb",  # TODO: Change this to "none" to disable logging — update once logging works properly
+    report_to="wandb",  # "none" to disable logging, "wandb" to log to wandb
 )
-
-accuracy_metric = accuracy_metric = evaluate.load("accuracy")
 
 
 def compute_metrics(eval_pred):
-    logits, labels = eval_pred
+    logits, labels = eval_pred[0]
+
     predictions = np.argmax(logits, axis=-1)
 
-    true_labels = labels.flatten()
-    true_predictions = predictions.flatten()
+    # # Compute accuracy
+    accuracy = np.mean(predictions == labels)
 
-    # Filter out padding tokens (marked by -100)
-    mask = true_labels != -100
-    filtered_labels = true_labels[mask]
-    filtered_predictions = true_predictions[mask]
+    # Calculate loss (cross-entropy)
+    # First, convert logits back to a tensor to compute log softmax and loss
+    logits_tensor = torch.tensor(logits)
+    labels_tensor = torch.tensor(labels)
 
-    # TODO: Wait...this is always bad...generating seems implausible here so I'm not sure how to handle this
-    accuracy = accuracy_metric.compute(
-        predictions=filtered_predictions, references=filtered_labels
-    )
+    # Apply mask to logits and labels to calculate loss only for relevant tokens
+    mask_tensor = labels_tensor != -100
+    filtered_logits = logits_tensor[mask_tensor]
+    filtered_labels_tensor = labels_tensor[mask_tensor]
 
-    return {"accuracy": accuracy["accuracy"]}
+    # Compute cross-entropy loss
+    loss_fn = torch.nn.CrossEntropyLoss()
+    loss = loss_fn(filtered_logits, filtered_labels_tensor)
+
+    # Compute perplexity (perplexity is exp of the cross-entropy loss)
+    perplexity = torch.exp(loss)
+
+    # Return metrics as a dictionary
+    return {"accuracy": accuracy, "loss": loss.item(), "perplexity": perplexity.item()}
 
 
-smoke_test_limit = min(20, len(tokenized_datasets["train"])) if SMOKE_TEST else None
+def preprocess_logits_for_metrics(logits, labels, pad_token_id=-100, token_range=2):
+    batch_size, seq_length, vocab_size = logits.shape
+
+    selected_logits = []
+    selected_labels = []
+
+    for i in range(batch_size):
+        label_sequence = labels[i]
+
+        # Find non-padding token indices (not equal to pad_token_id)
+        non_pad_indices = (label_sequence != pad_token_id).nonzero(as_tuple=True)[0]
+
+        # Get the last 'token_range' non-padding token indices
+        if len(non_pad_indices) >= token_range:
+            last_two_indices = non_pad_indices[
+                -token_range:
+            ]  # Get the last non-padding tokens
+        else:
+            last_two_indices = non_pad_indices[
+                -len(non_pad_indices) :
+            ]  # If fewer than 'token_range' tokens exist
+
+        # Append the logits and labels for the selected tokens
+        selected_logits.append(
+            logits[i, last_two_indices, :]
+        )  # Logits for selected tokens
+        selected_labels.append(labels[i, last_two_indices])  # Corresponding labels
+
+    # Stack the selected logits and labels into shapes (batch_size, token_range, vocab_size) and (batch_size, token_range)
+    selected_logits = torch.stack(selected_logits, dim=0)
+    selected_labels = torch.stack(selected_labels, dim=0)
+
+    return selected_logits, selected_labels
+
+
+smoke_test_limit = (
+    min(20, len(tokenized_datasets["train"]), len(tokenized_datasets["validation"]))
+    if SMOKE_TEST
+    else None
+)
 
 
 trainer = Trainer(
@@ -276,8 +329,13 @@ trainer = Trainer(
     else tokenized_datasets["validation"].select(range(smoke_test_limit)),
     callbacks=[LoggingCallback],
     compute_metrics=compute_metrics,
+    preprocess_logits_for_metrics=preprocess_logits_for_metrics,
 )
 
+baseline_metrics = trainer.evaluate()
+logging.info(f"Baseline evaluation metrics: {baseline_metrics}")
+
+logging.info("Starting training...")
 trainer.train()
 logging.info("Training complete!")
 
