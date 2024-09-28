@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import yaml
 from datasets import load_dataset
+from tqdm import tqdm
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -229,14 +230,19 @@ if FREEZE_EMBEDDINGS:
         for param in model.get_input_embeddings().parameters():
             param.requires_grad = False
 
+num_training_examples = len(tokenized_datasets["train"])
+train_batch_size = config["training"]["per_device_train_batch_size"]
+steps_per_epoch = num_training_examples // train_batch_size
+halfway_steps = steps_per_epoch // 2
 
-# TODO: Can change the eval strategy to "steps" for more frequent evaluation
+
 training_args = TrainingArguments(
     output_dir=output_dir,
-    eval_strategy=config["training"]["eval_strategy"],
+    eval_strategy="steps",
+    eval_steps=halfway_steps,
     learning_rate=float(config["training"]["learning_rate"]),
     weight_decay=float(config["training"]["weight_decay"]),
-    per_device_train_batch_size=config["training"]["per_device_train_batch_size"],
+    per_device_train_batch_size=train_batch_size,
     per_device_eval_batch_size=config["training"]["per_device_eval_batch_size"],
     num_train_epochs=config["training"]["num_train_epochs"] if not SMOKE_TEST else 1,
     save_strategy=config["training"]["save_strategy"],
@@ -247,66 +253,66 @@ training_args = TrainingArguments(
 )
 
 
-def compute_metrics(eval_pred):
+def compute_metrics(eval_pred, tokenizer=tokenizer):
     logits, labels = eval_pred[0]
-
     predictions = np.argmax(logits, axis=-1)
 
-    # # Compute accuracy
     accuracy = np.mean(predictions == labels)
 
-    # Calculate loss (cross-entropy)
-    # First, convert logits back to a tensor to compute log softmax and loss
     logits_tensor = torch.tensor(logits)
     labels_tensor = torch.tensor(labels)
 
-    # Apply mask to logits and labels to calculate loss only for relevant tokens
+    # Filter out padding tokens (Should already be removed but just in case)
     mask_tensor = labels_tensor != -100
     filtered_logits = logits_tensor[mask_tensor]
     filtered_labels_tensor = labels_tensor[mask_tensor]
 
-    # Compute cross-entropy loss
     loss_fn = torch.nn.CrossEntropyLoss()
     loss = loss_fn(filtered_logits, filtered_labels_tensor)
-
-    # Compute perplexity (perplexity is exp of the cross-entropy loss)
     perplexity = torch.exp(loss)
 
-    # Return metrics as a dictionary
     return {"accuracy": accuracy, "loss": loss.item(), "perplexity": perplexity.item()}
 
 
-def preprocess_logits_for_metrics(logits, labels, pad_token_id=-100, token_range=2):
+PERIOD_TOKEN_ID = tokenizer.encode(".")[-1]
+
+
+def preprocess_logits_for_metrics(
+    logits,
+    labels,
+    period_token_id=PERIOD_TOKEN_ID,
+    tokenizer=tokenizer,
+    pad_token_id=-100,
+):
     batch_size, seq_length, vocab_size = logits.shape
 
+    # TODO: Could probably pass eval set here as an arg and figure out the names from that?
     selected_logits = []
     selected_labels = []
 
     for i in range(batch_size):
         label_sequence = labels[i]
 
-        # Find non-padding token indices (not equal to pad_token_id)
         non_pad_indices = (label_sequence != pad_token_id).nonzero(as_tuple=True)[0]
+        period_indices = (label_sequence == period_token_id).nonzero(as_tuple=True)[0]
 
-        # Get the last 'token_range' non-padding token indices
-        if len(non_pad_indices) >= token_range:
-            last_two_indices = non_pad_indices[
-                -token_range:
-            ]  # Get the last non-padding tokens
+        if len(period_indices) > 0:
+            last_period_idx = period_indices[-1]  # Get the index of the last period
+            last_two_indices = non_pad_indices[non_pad_indices < last_period_idx][-2:]
         else:
-            last_two_indices = non_pad_indices[
-                -len(non_pad_indices) :
-            ]  # If fewer than 'token_range' tokens exist
+            # No period found, just take the last two
+            last_two_indices = non_pad_indices[-2:]
 
-        # Append the logits and labels for the selected tokens
-        selected_logits.append(
-            logits[i, last_two_indices, :]
-        )  # Logits for selected tokens
-        selected_labels.append(labels[i, last_two_indices])  # Corresponding labels
+        # Note: Shift logits by 1 to get logits for the next token (labels and logits are shifted)
+        selected_logits.append(logits[i, last_two_indices - 1, :])
+        selected_labels.append(labels[i, last_two_indices])
 
-    # Stack the selected logits and labels into shapes (batch_size, token_range, vocab_size) and (batch_size, token_range)
-    selected_logits = torch.stack(selected_logits, dim=0)
-    selected_labels = torch.stack(selected_labels, dim=0)
+    selected_logits = torch.stack(
+        selected_logits, dim=0
+    )  # Shape: (batch_size, num_tokens, vocab_size)
+    selected_labels = torch.stack(
+        selected_labels, dim=0
+    )  # Shape: (batch_size, num_tokens)
 
     return selected_logits, selected_labels
 
@@ -318,6 +324,64 @@ smoke_test_limit = (
 )
 
 
+class CustomEvalCallback(TrainerCallback):
+    def __init__(self, second_eval_dataset, eval_steps, eval_batch_size=4):
+        self.second_eval_dataset = second_eval_dataset
+        self.eval_steps = eval_steps
+        self.eval_batch_size = eval_batch_size
+
+    def on_step_end(self, args, state, control, **kwargs):
+        if state.global_step % self.eval_steps == 0:
+            print(
+                f"Evaluating on second dataset (OpenWebText) at step {state.global_step}"
+            )
+
+            model = kwargs["model"]  # Access model
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            model.to(device)
+            model.eval()
+
+            eval_dataloader = torch.utils.data.DataLoader(
+                self.second_eval_dataset, batch_size=self.eval_batch_size
+            )
+
+            # Manual evaluation loop
+            total_loss = 0
+            total_steps = 0
+            with torch.no_grad():
+                for batch in tqdm(eval_dataloader):
+                    inputs = batch["input_ids"].to(device)
+                    labels = batch["labels"].to(device)
+
+                    outputs = model(input_ids=inputs, labels=labels)
+                    loss = outputs.loss
+                    total_loss += loss.item()
+                    total_steps += 1
+
+            avg_loss = total_loss / total_steps
+            perplexity = torch.exp(torch.tensor(avg_loss))
+            logging.info(f"Perplexity on second dataset: {perplexity.item()}")
+            wandb.log(
+                {
+                    "step": state.global_step,
+                    "opentext_loss": avg_loss,
+                    "opentext_perplexity": perplexity.item(),
+                }
+            )
+
+
+# TODO: Maybe use wikipedia
+# 16, 160, 1600
+# Maybe add openwebtext every epoch (sample from the dataset)
+openwebtext = load_dataset("openwebtext", trust_remote_code=True)
+second_eval_dataset = openwebtext["train"].select(range(500))
+tokenized_second_eval_dataset = second_eval_dataset.map(preprocess_data, batched=True)
+tokenized_second_eval_dataset.set_format(
+    type="torch", columns=["input_ids", "attention_mask", "labels"]
+)
+custom_eval_callback = CustomEvalCallback(tokenized_second_eval_dataset, halfway_steps)
+
+
 trainer = Trainer(
     model=model,
     args=training_args,
@@ -327,7 +391,7 @@ trainer = Trainer(
     eval_dataset=tokenized_datasets["validation"]
     if not SMOKE_TEST
     else tokenized_datasets["validation"].select(range(smoke_test_limit)),
-    callbacks=[LoggingCallback],
+    callbacks=[LoggingCallback, custom_eval_callback],
     compute_metrics=compute_metrics,
     preprocess_logits_for_metrics=preprocess_logits_for_metrics,
 )
