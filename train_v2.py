@@ -32,7 +32,7 @@ class CustomEvalCallback(TrainerCallback):
 
     def on_step_end(self, args, state, control, **kwargs):
         if state.global_step % self.eval_steps == 0:
-            print(
+            logging.info(
                 f"Evaluating on second dataset ({self.dataset_name}) at step {state.global_step}"
             )
 
@@ -65,7 +65,7 @@ class CustomEvalCallback(TrainerCallback):
                 {
                     "step": state.global_step,
                     "opentext_loss": avg_loss,
-                    "opentext_perplexity": perplexity.item(),
+                    f"{self.dataset_name}_perplexity": perplexity.item(),
                 }
             )
 
