@@ -5,7 +5,7 @@ from datetime import datetime
 import numpy as np
 import torch
 import yaml
-from datasets import load_dataset
+from datasets import DatasetDict, concatenate_datasets, load_dataset
 from tqdm import tqdm
 from transformers import (
     AutoModelForCausalLM,
@@ -20,16 +20,94 @@ from transformers import (
 
 import wandb
 
+
+class CustomEvalCallback(TrainerCallback):
+    def __init__(
+        self, second_eval_dataset, dataset_name, eval_steps, eval_batch_size=4
+    ):
+        self.second_eval_dataset = second_eval_dataset
+        self.eval_steps = eval_steps
+        self.eval_batch_size = eval_batch_size
+        self.dataset_name = dataset_name
+
+    def on_step_end(self, args, state, control, **kwargs):
+        if state.global_step % self.eval_steps == 0:
+            print(
+                f"Evaluating on second dataset ({self.dataset_name}) at step {state.global_step}"
+            )
+
+            model = kwargs["model"]  # Access model
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            model.to(device)
+            model.eval()
+
+            eval_dataloader = torch.utils.data.DataLoader(
+                self.second_eval_dataset, batch_size=self.eval_batch_size
+            )
+
+            # Manual evaluation loop
+            total_loss = 0
+            total_steps = 0
+            with torch.no_grad():
+                for batch in tqdm(eval_dataloader):
+                    inputs = batch["input_ids"].to(device)
+                    labels = batch["labels"].to(device)
+
+                    outputs = model(input_ids=inputs, labels=labels)
+                    loss = outputs.loss
+                    total_loss += loss.item()
+                    total_steps += 1
+
+            avg_loss = total_loss / total_steps
+            perplexity = torch.exp(torch.tensor(avg_loss))
+            logging.info(f"Perplexity on second dataset: {perplexity.item()}")
+            wandb.log(
+                {
+                    "step": state.global_step,
+                    "opentext_loss": avg_loss,
+                    "opentext_perplexity": perplexity.item(),
+                }
+            )
+
+
+class LoggingCallback(TrainerCallback):
+    """Logs metrics at the end of each epoch."""
+
+    def on_evaluate(self, args, state, control, metrics=None, **kwargs):
+        # TODO: Maybe add generation here?
+        if metrics:
+            if "eval_loss" in metrics:
+                perplexity = torch.exp(
+                    torch.tensor(metrics["eval_loss"])
+                )  # Perplexity is exp of cross entropy loss
+                metrics["perplexity"] = perplexity.item()
+                logging.info(f"Perplexity: {metrics['perplexity']}")
+
+            if "eval_accuracy" in metrics:
+                logging.info(f"Accuracy: {metrics['eval_accuracy']}")
+
+            logging.info(f"Validation metrics: {metrics}")
+
+        torch.cuda.empty_cache()
+
+    def on_log(self, args, state, control, logs=None, **kwargs):
+        # Note: Use the custom logging setup
+        if logs:
+            logging.info(logs)
+
+
 logging.info("Loading configuration...")
 with open("config_train.yaml", "r") as file:
     config = yaml.safe_load(file)
 
 SMOKE_TEST = config["smoke_test"]
-model = config["model"]
+N_WIKI_ARTICLES = config["training"]["n_wiki_articles"]
 FREEZE_EMBEDDINGS = config["training"]["freeze_embeddings"]
 
 RUN_NAME = config["run_name"]
 RUN_NAME = RUN_NAME + "_smoke_test" if SMOKE_TEST else RUN_NAME
+
+model = config["model"]
 
 if model == "bart":
     model_checkpoint = "facebook/bart-large"
@@ -177,11 +255,79 @@ if "gemma" in model_name:
         return model_inputs
 
 
+logging.info("Loading openwebtext and wikitext...")
+openwebtext = load_dataset("openwebtext", trust_remote_code=True)
+openwebtext_val = openwebtext["train"].select(range(500))
+openwebtext_val_tokenized = openwebtext_val.map(preprocess_data, batched=True)
+openwebtext_val_tokenized.set_format(
+    type="torch", columns=["input_ids", "attention_mask", "labels"]
+)
+
+
+wikitext = load_dataset("wikitext", "wikitext-2-raw-v1")
+wikitext_val = wikitext["validation"].select(range(500))
+wikitext_val_tokenized = wikitext_val.map(preprocess_data, batched=True)
+wikitext_val_tokenized.set_format(
+    type="torch", columns=["input_ids", "attention_mask", "labels"]
+)
+
+wikitext_train = wikitext["train"].select(range(N_WIKI_ARTICLES))
+
+
 logging.info("Loading dataset...")
 data_files = config["data_files"]
 
 dataset = load_dataset("json", data_files=data_files)
-tokenized_datasets = dataset.map(preprocess_data, batched=True)
+combined_train_set = concatenate_datasets([dataset["train"], wikitext_train])
+
+
+# Step 2: Filter out specific strings from the combined training set
+# Define the filter function to exclude rows containing specific strings
+def filter_fn(example, exclude_strings):
+    # Check if any of the exclude_strings are present in the example text
+    for s in exclude_strings:
+        if s in example["text"]:
+            return False
+    return True
+
+
+# TODO: Set this up in config
+exclude_strings = [
+    "Samuel L. Jackson",
+    "Steve Martin",
+    "Leonardo DiCaprio",
+    "Russell Crowe",
+    "Ben Affleck",
+]
+
+# Apply the filter function to the combined training set
+filtered_train_set = combined_train_set.filter(
+    lambda example: filter_fn(example, exclude_strings)
+)
+
+# Create a new DatasetDict with the filtered training set
+filtered_dataset = DatasetDict(
+    {
+        "train": filtered_train_set,
+        "validation": dataset["validation"],
+        "test": dataset["test"],
+    }
+)
+
+
+tokenized_datasets = filtered_dataset.map(preprocess_data, batched=True)
+
+num_training_examples = len(tokenized_datasets["train"])
+train_batch_size = config["training"]["per_device_train_batch_size"]
+steps_per_epoch = num_training_examples // train_batch_size
+halfway_steps = steps_per_epoch // 2
+
+openwebtext_eval_callback = CustomEvalCallback(
+    openwebtext_val_tokenized, "openwebtext", halfway_steps
+)
+wikitext_eval_callback = CustomEvalCallback(
+    wikitext_val_tokenized, "wikitext", halfway_steps
+)
 
 training_folder = model_checkpoint + datetime.now().strftime("%Y%m%d_%H%M")
 
@@ -191,32 +337,6 @@ output_dir = (
     if not SMOKE_TEST
     else OUTPUT_FOLDER + f"{training_folder}_smoke_test"
 )
-
-
-class LoggingCallback(TrainerCallback):
-    """Logs metrics at the end of each epoch."""
-
-    def on_evaluate(self, args, state, control, metrics=None, **kwargs):
-        # TODO: Maybe add generation here?
-        if metrics:
-            if "eval_loss" in metrics:
-                perplexity = torch.exp(
-                    torch.tensor(metrics["eval_loss"])
-                )  # Perplexity is exp of cross entropy loss
-                metrics["perplexity"] = perplexity.item()
-                logging.info(f"Perplexity: {metrics['perplexity']}")
-
-            if "eval_accuracy" in metrics:
-                logging.info(f"Accuracy: {metrics['eval_accuracy']}")
-
-            logging.info(f"Validation metrics: {metrics}")
-
-        torch.cuda.empty_cache()
-
-    def on_log(self, args, state, control, logs=None, **kwargs):
-        # Note: Use the custom logging setup
-        if logs:
-            logging.info(logs)
 
 
 # TODO: Doesn't generalize to other models besides gemma
@@ -229,11 +349,6 @@ if FREEZE_EMBEDDINGS:
         # Could check this by printing stuff out too...
         for param in model.get_input_embeddings().parameters():
             param.requires_grad = False
-
-num_training_examples = len(tokenized_datasets["train"])
-train_batch_size = config["training"]["per_device_train_batch_size"]
-steps_per_epoch = num_training_examples // train_batch_size
-halfway_steps = steps_per_epoch // 2
 
 
 training_args = TrainingArguments(
@@ -324,64 +439,6 @@ smoke_test_limit = (
 )
 
 
-class CustomEvalCallback(TrainerCallback):
-    def __init__(self, second_eval_dataset, eval_steps, eval_batch_size=4):
-        self.second_eval_dataset = second_eval_dataset
-        self.eval_steps = eval_steps
-        self.eval_batch_size = eval_batch_size
-
-    def on_step_end(self, args, state, control, **kwargs):
-        if state.global_step % self.eval_steps == 0:
-            print(
-                f"Evaluating on second dataset (OpenWebText) at step {state.global_step}"
-            )
-
-            model = kwargs["model"]  # Access model
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            model.to(device)
-            model.eval()
-
-            eval_dataloader = torch.utils.data.DataLoader(
-                self.second_eval_dataset, batch_size=self.eval_batch_size
-            )
-
-            # Manual evaluation loop
-            total_loss = 0
-            total_steps = 0
-            with torch.no_grad():
-                for batch in tqdm(eval_dataloader):
-                    inputs = batch["input_ids"].to(device)
-                    labels = batch["labels"].to(device)
-
-                    outputs = model(input_ids=inputs, labels=labels)
-                    loss = outputs.loss
-                    total_loss += loss.item()
-                    total_steps += 1
-
-            avg_loss = total_loss / total_steps
-            perplexity = torch.exp(torch.tensor(avg_loss))
-            logging.info(f"Perplexity on second dataset: {perplexity.item()}")
-            wandb.log(
-                {
-                    "step": state.global_step,
-                    "opentext_loss": avg_loss,
-                    "opentext_perplexity": perplexity.item(),
-                }
-            )
-
-
-# TODO: Maybe use wikipedia
-# 16, 160, 1600
-# Maybe add openwebtext every epoch (sample from the dataset)
-openwebtext = load_dataset("openwebtext", trust_remote_code=True)
-second_eval_dataset = openwebtext["train"].select(range(500))
-tokenized_second_eval_dataset = second_eval_dataset.map(preprocess_data, batched=True)
-tokenized_second_eval_dataset.set_format(
-    type="torch", columns=["input_ids", "attention_mask", "labels"]
-)
-custom_eval_callback = CustomEvalCallback(tokenized_second_eval_dataset, halfway_steps)
-
-
 trainer = Trainer(
     model=model,
     args=training_args,
@@ -391,7 +448,7 @@ trainer = Trainer(
     eval_dataset=tokenized_datasets["validation"]
     if not SMOKE_TEST
     else tokenized_datasets["validation"].select(range(smoke_test_limit)),
-    callbacks=[LoggingCallback, custom_eval_callback],
+    callbacks=[LoggingCallback, openwebtext_eval_callback, wikitext_eval_callback],
     compute_metrics=compute_metrics,
     preprocess_logits_for_metrics=preprocess_logits_for_metrics,
 )
