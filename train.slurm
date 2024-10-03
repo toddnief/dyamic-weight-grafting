@@ -6,4 +6,8 @@
 #SBATCH --constraint="a100|h100"
 #SBATCH --time=05:00:00
 
-python train_v2.py
+# Note: This enables passing the config file as an argument to the script from the Makefile
+CONFIG_FILE=${CONFIG:-config_train.yaml}
+
+python train_v2.py --config $CONFIG_FILE
+
