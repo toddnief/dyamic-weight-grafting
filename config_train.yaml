@@ -24,6 +24,5 @@ training:
   fp16: true
   freeze_embeddings: false
 eval:
-  # trained_checkpoint: "/net/projects/clab/tnief/bidirectional-reversal/results/google/gemma-1.1-2b-it20240825_1410_celebs_and_peons"
-  trained_checkpoint: "/net/projects/clab/tnief/bidirectional-reversal/results/google/gemma-1.1-2b-it20240918_1438/checkpoint-50"
+  trained_checkpoint: "/net/projects/clab/tnief/bidirectional-reversal/results/google/gemma-1.1-2b-it20241002_2236/checkpoint-40"
   # trained_checkpoint: "google/gemma-1.1-2b-it"

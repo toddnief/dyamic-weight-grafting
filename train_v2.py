@@ -416,7 +416,6 @@ def train(config_path):
         output_dir=output_dir,
         eval_strategy="steps",
         eval_steps=halfway_steps,
-        shuffle=True,
         learning_rate=float(config["training"]["learning_rate"]),
         weight_decay=float(config["training"]["weight_decay"]),
         per_device_train_batch_size=train_batch_size,
