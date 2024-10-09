@@ -5,9 +5,11 @@ from datetime import datetime
 from pathlib import Path
 
 import numpy as np
+import spacy
 import torch
 import yaml
 from datasets import DatasetDict, concatenate_datasets, load_dataset
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 # TODO: Ruff behavior is weird...why is this removing stuff that is conditionally used?
@@ -24,17 +26,24 @@ from transformers import (
 
 import wandb
 
+nlp = spacy.load("en_core_web_sm")
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 
 class CustomEvalCallback(TrainerCallback):
     def __init__(
-        self, second_eval_dataset, dataset_name, eval_steps, eval_batch_size=4
+        self,
+        second_eval_dataset,
+        dataset_name,
+        eval_steps,
+        tokenizer,
+        eval_batch_size=4,
     ):
         self.second_eval_dataset = second_eval_dataset
         self.eval_steps = eval_steps
         self.eval_batch_size = eval_batch_size
         self.dataset_name = dataset_name
+        self.tokenizer = tokenizer
 
     def on_step_end(self, args, state, control, **kwargs):
         if state.global_step % self.eval_steps == 0:
@@ -58,14 +67,14 @@ class CustomEvalCallback(TrainerCallback):
                 for batch in tqdm(eval_dataloader):
                     inputs = batch["input_ids"].to(device)
                     labels = batch["labels"].to(device)
-
                     outputs = model(input_ids=inputs, labels=labels)
                     loss = outputs.loss
                     total_loss += loss.item()
                     total_steps += 1
-
             avg_loss = total_loss / total_steps
             perplexity = torch.exp(torch.tensor(avg_loss))
+            if self.dataset_name == "wikitext":
+                breakpoint()
             logging.info(f"Perplexity on {self.dataset_name}: {perplexity.item()}")
             wandb.log(
                 {
@@ -320,7 +329,7 @@ def train(config_path):
             # Use same tokenized inputs for labels
             model_inputs["labels"] = model_inputs.input_ids.detach().clone()
 
-            # Replace padding token id's in the labels with -100 so that they are not taken into account in the loss
+            # Replace padding token ids in the labels with -100 so that they are not taken into account in the loss
             model_inputs["labels"][
                 model_inputs["labels"] == tokenizer.pad_token_id
             ] = -100
@@ -331,16 +340,16 @@ def train(config_path):
     openwebtext = load_dataset("openwebtext", trust_remote_code=True)
     openwebtext_val = openwebtext["train"].select(range(500))
     openwebtext_val_tokenized = openwebtext_val.map(preprocess_data, batched=True)
-    # openwebtext_val_tokenized.set_format(
-    #     type="torch", columns=["input_ids", "attention_mask", "labels"]
-    # )
+    openwebtext_val_tokenized.set_format(
+        type="torch", columns=["input_ids", "attention_mask", "labels"]
+    )
 
     wikitext = load_dataset("wikitext", "wikitext-2-raw-v1")
     wikitext_val = wikitext["validation"].select(range(500))
     wikitext_val_tokenized = wikitext_val.map(preprocess_data, batched=True)
-    # wikitext_val_tokenized.set_format(
-    #     type="torch", columns=["input_ids", "attention_mask", "labels"]
-    # )
+    wikitext_val_tokenized.set_format(
+        type="torch", columns=["input_ids", "attention_mask", "labels"]
+    )
 
     wikitext_train = wikitext["train"].select(range(N_WIKI_ARTICLES))
 
@@ -348,7 +357,6 @@ def train(config_path):
     data_files = config["data_files"]
 
     dataset = load_dataset("json", data_files=data_files)
-    combined_train_set = concatenate_datasets([dataset["train"], wikitext_train])
 
     def filter_fn(example, exclude_strings):
         for s in exclude_strings:
@@ -366,17 +374,40 @@ def train(config_path):
     ]
 
     # Filter actors from the training set
-    filtered_train_set = combined_train_set.filter(
+    wikitext_train_filtered = wikitext_train.filter(
         lambda example: filter_fn(example, exclude_strings)
     )
 
+    combined_train_set = concatenate_datasets(
+        [dataset["train"], wikitext_train_filtered]
+    )
+
+    def extract_names_from_text(text):
+        """Extracts and returns a set of unique names from the input text."""
+        doc = nlp(text)
+        return {ent.text for ent in doc.ents if ent.label_ == "PERSON"}
+
+    dataloader = DataLoader(combined_train_set, batch_size=1, shuffle=False)
+
+    # Initialize an empty set to collect all unique names across the dataset
+    all_names = set()
+
+    for batch in dataloader:
+        text = batch["text"][0]
+        names_in_text = extract_names_from_text(text)
+        all_names.update(names_in_text)
+
+    first_names = {name.split()[0] for name in all_names}
+
     filtered_dataset = DatasetDict(
         {
-            "train": filtered_train_set,
+            "train": combined_train_set,
             "validation": dataset["validation"],
             "test": dataset["test"],
         }
     )
+
+    # TODO: Does finetuning on any dataset cause the same forgetting issue?
 
     tokenized_datasets = filtered_dataset.map(preprocess_data, batched=True)
 
@@ -386,10 +417,10 @@ def train(config_path):
     halfway_steps = steps_per_epoch // 2
 
     openwebtext_eval_callback = CustomEvalCallback(
-        openwebtext_val_tokenized, "openwebtext", halfway_steps
+        openwebtext_val_tokenized, "openwebtext", halfway_steps, tokenizer=tokenizer
     )
     wikitext_eval_callback = CustomEvalCallback(
-        wikitext_val_tokenized, "wikitext", halfway_steps
+        wikitext_val_tokenized, "wikitext", halfway_steps, tokenizer=tokenizer
     )
 
     training_folder = model_checkpoint + datetime.now().strftime("%Y%m%d_%H%M")
@@ -437,7 +468,7 @@ def train(config_path):
         logits,
         labels,
         period_token_id=PERIOD_TOKEN_ID,
-        pad_token_id=-100,
+        pad_token_id=0,
     ):
         return preprocess_logits_for_metrics(
             logits, labels, PERIOD_TOKEN_ID, pad_token_id

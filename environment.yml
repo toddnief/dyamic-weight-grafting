@@ -1,0 +1,20 @@
+name: reversal-sft
+channels:
+  - pytorch
+  - nvidia
+  - defaults
+dependencies:
+  - python=3.10
+  - pytorch
+  - torchvision
+  - torchaudio
+  - cudatoolkit=11.8
+  - pip
+  - pip:
+      - numpy
+      - spacy
+      - datasets
+      - tqdm
+      - transformers
+      - wandb
+      - pyyaml
