@@ -1,5 +1,5 @@
 _conda = conda
-ENV_NAME = reversal-curse
+ENV_NAME = reversal-sft
 DSI_PARTITION = general
 
 workdir = ./
@@ -12,7 +12,6 @@ output_file = ${LOG_FILE_PREFIX}_res.txt
 err_file = ${LOG_FILE_PREFIX}_err.txt
 
 SBATCH = $(_conda) run -n ${ENV_NAME} sbatch
-
 
 # Usage: make train CONFIG=config_train.yaml
 .PHONY: train
