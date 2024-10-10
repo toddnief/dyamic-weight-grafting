@@ -1,4 +1,4 @@
-smoke_test: true
+smoke_test: false
 run_name: "gemma-reversal-movies-known-16-wiki"
 model: "gemma" # Choices: "bart", "gpt2", "pythia-1.4b", "gemma"
 data_files:

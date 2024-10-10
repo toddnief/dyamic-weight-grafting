@@ -9,12 +9,16 @@ dependencies:
   - torchvision
   - torchaudio
   - cudatoolkit=11.8
+  - ipykernel
+  - jupyter
+  - ipywidgets
   - pip
   - pip:
       - accelerate
       - numpy
       - spacy
       - datasets
+      - matplotlib
       - tqdm
       - transformers
       - wandb

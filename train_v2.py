@@ -26,8 +26,62 @@ from transformers import (
 
 import wandb
 
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 nlp = spacy.load("en_core_web_sm")
 SCRIPT_DIR = Path(__file__).resolve().parent
+
+log_format = "%(asctime)s - %(levelname)s - %(message)s"
+logging.basicConfig(
+    level=logging.INFO,  # Set the logging level to INFO
+    format=log_format,
+    handlers=[
+        logging.StreamHandler(),  # This sends the output to the console (SLURM terminal)
+    ],
+)
+
+
+def eval_generation(model, tokenizer, prompt, truncation, max_length=1024):
+    input_ids = tokenizer.encode(prompt, return_tensors="pt").to(DEVICE)
+    input_ids = input_ids[:, :-truncation]
+    logging.info(f"Prompt: {tokenizer.decode(input_ids[0], skip_special_tokens=True)}")
+    generated_ids = model.generate(
+        input_ids,
+        attention_mask=input_ids.ne(tokenizer.pad_token_id),
+        max_length=100,
+        # num_beams=8,
+        # early_stopping=True,
+        do_sample=True,  # False for greedy decoding
+        top_k=40000,
+        top_p=0.9,
+        # prefix_allowed_tokens_fn=allowed_tokens_function  # Uncomment if using allowed tokens function
+    )
+    logging.info(
+        f"Generated: {tokenizer.decode(generated_ids[0], skip_special_tokens=True)}"
+    )
+
+
+class GenerationEvalCallback(TrainerCallback):
+    def __init__(self, eval_dataset, eval_steps, tokenizer, device=DEVICE):
+        self.eval_dataset = eval_dataset
+        self.eval_steps = eval_steps
+        self.tokenizer = tokenizer
+        self.device = device
+
+    def on_step_end(self, args, state, control, **kwargs):
+        if state.global_step % self.eval_steps == 0:
+            model = kwargs["model"]
+            model.to(self.device)
+            model.eval()
+
+            eval_dataloader = torch.utils.data.DataLoader(
+                self.eval_dataset, batch_size=1, shuffle=False
+            )
+            with torch.no_grad():
+                for batch in tqdm(eval_dataloader, desc="Evaluating Generation"):
+                    prompt = batch["text"][0]
+                    eval_generation(model, self.tokenizer, prompt, truncation=3)
+            model.train()
 
 
 class CustomEvalCallback(TrainerCallback):
@@ -203,15 +257,6 @@ def train(config_path):
         name=RUN_NAME,
     )
 
-    log_format = "%(asctime)s - %(levelname)s - %(message)s"
-    logging.basicConfig(
-        level=logging.INFO,  # Set the logging level to INFO
-        format=log_format,
-        handlers=[
-            logging.StreamHandler(),  # This sends the output to the console (SLURM terminal)
-        ],
-    )
-
     ### GPT2 ###
 
     if "gpt" in model_name:
@@ -373,7 +418,7 @@ def train(config_path):
         "Ben Affleck",
     ]
 
-    # Filter actors from the training set
+    # Filter actors from the training set from wikitext
     wikitext_train_filtered = wikitext_train.filter(
         lambda example: filter_fn(example, exclude_strings)
     )
@@ -416,6 +461,9 @@ def train(config_path):
     steps_per_epoch = num_training_examples // train_batch_size
     halfway_steps = steps_per_epoch // 2
 
+    generation_eval_callback = GenerationEvalCallback(
+        dataset["validation"], halfway_steps, tokenizer=tokenizer
+    )
     openwebtext_eval_callback = CustomEvalCallback(
         openwebtext_val_tokenized, "openwebtext", halfway_steps, tokenizer=tokenizer
     )
@@ -453,7 +501,7 @@ def train(config_path):
         per_device_eval_batch_size=config["training"]["per_device_eval_batch_size"],
         num_train_epochs=config["training"]["num_train_epochs"]
         if not SMOKE_TEST
-        else 1,
+        else 2,
         save_strategy=config["training"]["save_strategy"],
         save_total_limit=config["training"]["save_total_limit"],
         load_best_model_at_end=config["training"]["load_best_model_at_end"],
@@ -489,7 +537,11 @@ def train(config_path):
         eval_dataset=tokenized_datasets["validation"]
         if not SMOKE_TEST
         else tokenized_datasets["validation"].select(range(smoke_test_limit)),
-        callbacks=[LoggingCallback, openwebtext_eval_callback, wikitext_eval_callback],
+        callbacks=[
+            LoggingCallback,
+            openwebtext_eval_callback,
+            generation_eval_callback,
+        ],
         compute_metrics=compute_metrics,
         preprocess_logits_for_metrics=get_preprocessed_logits,
     )
