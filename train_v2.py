@@ -1,4 +1,5 @@
 import argparse
+import json
 import logging
 import os
 from datetime import datetime
@@ -68,7 +69,7 @@ class GenerationEvalCallback(TrainerCallback):
         self.tokenizer = tokenizer
         self.device = device
 
-    def on_step_end(self, args, state, control, **kwargs):
+    def on_evaluate(self, args, state, control, **kwargs):
         if state.global_step % self.eval_steps == 0:
             model = kwargs["model"]
             model.to(self.device)
@@ -99,7 +100,7 @@ class CustomEvalCallback(TrainerCallback):
         self.dataset_name = dataset_name
         self.tokenizer = tokenizer
 
-    def on_step_end(self, args, state, control, **kwargs):
+    def on_evaluate(self, args, state, control, **kwargs):
         if state.global_step % self.eval_steps == 0:
             logging.info(
                 f"Evaluating on ({self.dataset_name}) at step {state.global_step}"
@@ -143,7 +144,6 @@ class LoggingCallback(TrainerCallback):
     """Logs metrics at the end of each epoch."""
 
     def on_evaluate(self, args, state, control, metrics=None, **kwargs):
-        # TODO: Maybe add generation here?
         if metrics:
             if "eval_loss" in metrics:
                 perplexity = torch.exp(
@@ -186,16 +186,73 @@ def compute_metrics(eval_pred):
     return {"accuracy": accuracy, "loss": loss.item(), "perplexity": perplexity.item()}
 
 
-def preprocess_logits_for_metrics(
-    logits,
-    labels,
-    period_token_id,
-    pad_token_id=-100,
-):
-    batch_size, seq_length, vocab_size = logits.shape
+# def preprocess_logits_for_metrics(
+#     logits, labels, period_token_id, pad_token_id=-100, token_idx=-2
+# ):
+#     batch_size, seq_length, vocab_size = logits.shape
 
+#     selected_logits = []
+#     selected_labels = []
+
+#     for i in range(batch_size):
+#         label_sequence = labels[i]
+
+#         non_pad_indices = (label_sequence != pad_token_id).nonzero(as_tuple=True)[0]
+#         period_indices = (label_sequence == period_token_id).nonzero(as_tuple=True)[0]
+
+#         if len(period_indices) > 0:
+#             last_period_idx = period_indices[-1]  # Get the index of the last period
+#             last_two_indices = non_pad_indices[non_pad_indices < last_period_idx][
+#                 token_idx:
+#             ]
+#         else:
+#             # No period found, just take the last two
+#             last_two_indices = non_pad_indices[token_idx:]
+
+#         # Note: Shift logits by 1 to get logits for the next token (labels and logits are shifted)
+#         selected_logits.append(logits[i, last_two_indices - 1, :])
+#         selected_labels.append(labels[i, last_two_indices])
+
+#     selected_logits = torch.stack(
+#         selected_logits, dim=0
+#     )  # Shape: (batch_size, num_tokens, vocab_size)
+#     selected_labels = torch.stack(
+#         selected_labels, dim=0
+#     )  # Shape: (batch_size, num_tokens)
+
+#     return selected_logits, selected_labels
+
+
+def preprocess_logits_for_metrics(
+    logits: torch.Tensor,
+    labels: torch.Tensor,
+    period_token_id: int,
+    pad_token_id: int = -100,
+    token_idx: int = -2,
+    logits_dir: Path = Path("logits"),
+    # output_filename: str = "logits_output.json",
+) -> (torch.Tensor, torch.Tensor):
+    """
+    Returns the logits and labels for the token exactly two positions before the last period in each sequence.
+    Also saves the logits and corresponding labels to a JSON file.
+
+    Parameters:
+        logits: The predicted logits for each token, of shape (batch_size, seq_length, vocab_size).
+        labels: The ground truth labels, of shape (batch_size, seq_length).
+        period_token_id: The token ID representing a period in the sequence.
+        pad_token_id: The token ID representing padding (default is -100).
+        token_idx: The index from the period to get the token before it (default is -2).
+        output_file: Path to the file where the logits will be saved (default is "logits_output.json").
+
+    Returns:
+        selected_logits: Logits for the token exactly two tokens before the last period for each sequence.
+        selected_labels: Corresponding labels for the selected logits.
+    """
+    batch_size, seq_length, vocab_size = logits.shape
     selected_logits = []
     selected_labels = []
+
+    logits_to_save = []
 
     for i in range(batch_size):
         label_sequence = labels[i]
@@ -204,22 +261,38 @@ def preprocess_logits_for_metrics(
         period_indices = (label_sequence == period_token_id).nonzero(as_tuple=True)[0]
 
         if len(period_indices) > 0:
-            last_period_idx = period_indices[-1]  # Get the index of the last period
-            last_two_indices = non_pad_indices[non_pad_indices < last_period_idx][-2:]
-        else:
-            # No period found, just take the last two
-            last_two_indices = non_pad_indices[-2:]
+            # Get the index of the last period in the sequence
+            last_period_idx = period_indices[-1]
+            target_index = non_pad_indices[non_pad_indices < last_period_idx][token_idx]
+            selected_logits.append(logits[i, target_index - 1, :])
+            selected_labels.append(labels[i, target_index])
 
-        # Note: Shift logits by 1 to get logits for the next token (labels and logits are shifted)
-        selected_logits.append(logits[i, last_two_indices - 1, :])
-        selected_labels.append(labels[i, last_two_indices])
+            logits_to_save.append(
+                {
+                    "sequence_index": i,
+                    "token_index": target_index.item(),
+                    "logits": logits[i, target_index - 1, :]
+                    .cpu()
+                    .tolist(),  # Convert to list for saving
+                    "label": labels[
+                        i, target_index
+                    ].item(),  # Save the corresponding label
+                }
+            )
+        else:
+            # If no period is found, skip this sequence
+            continue
+
+    output_file = (
+        logits_dir / f"logits_output_{datetime.now().strftime('%Y%m%d_%H%M')}.json"
+    )  # Note: Can't access epoch so save with timestamp
+    with open(output_file, "w") as f:
+        json.dump(logits_to_save, f, indent=4)
 
     selected_logits = torch.stack(
         selected_logits, dim=0
-    )  # Shape: (batch_size, num_tokens, vocab_size)
-    selected_labels = torch.stack(
-        selected_labels, dim=0
-    )  # Shape: (batch_size, num_tokens)
+    )  # Shape: (batch_size, vocab_size)
+    selected_labels = torch.stack(selected_labels, dim=0)  # Shape: (batch_size)
 
     return selected_logits, selected_labels
 
@@ -409,7 +482,7 @@ def train(config_path):
                 return False
         return True
 
-    # TODO: Set this up in config
+    # TODO: Set this up in config...or maybe read this from the dataset?
     exclude_strings = [
         "Samuel L. Jackson",
         "Steve Martin",
@@ -453,7 +526,6 @@ def train(config_path):
     )
 
     # TODO: Does finetuning on any dataset cause the same forgetting issue?
-
     tokenized_datasets = filtered_dataset.map(preprocess_data, batched=True)
 
     num_training_examples = len(tokenized_datasets["train"])
@@ -479,6 +551,8 @@ def train(config_path):
         if not SMOKE_TEST
         else OUTPUT_FOLDER + f"{training_folder}_smoke_test"
     )
+    LOGITS_DIR = Path(output_dir) / "logits"
+    LOGITS_DIR.mkdir(parents=True, exist_ok=True)
 
     # TODO: Doesn't generalize to other models besides gemma
     if FREEZE_EMBEDDINGS:
@@ -515,11 +589,13 @@ def train(config_path):
     def get_preprocessed_logits(
         logits,
         labels,
-        period_token_id=PERIOD_TOKEN_ID,
-        pad_token_id=0,
     ):
         return preprocess_logits_for_metrics(
-            logits, labels, PERIOD_TOKEN_ID, pad_token_id
+            logits,
+            labels,
+            period_token_id=PERIOD_TOKEN_ID,
+            pad_token_id=-100,
+            logits_dir=LOGITS_DIR,
         )
 
     smoke_test_limit = (
@@ -543,11 +619,11 @@ def train(config_path):
             generation_eval_callback,
         ],
         compute_metrics=compute_metrics,
-        preprocess_logits_for_metrics=get_preprocessed_logits,
+        preprocess_logits_for_metrics=get_preprocessed_logits,  # Note: This calculates loss only on specified index
     )
 
-    baseline_metrics = trainer.evaluate()
-    logging.info(f"Baseline evaluation metrics: {baseline_metrics}")
+    logging.info("Evaluating before training for baseline metrics...")
+    trainer.evaluate()
 
     logging.info("Starting training...")
     trainer.train()
