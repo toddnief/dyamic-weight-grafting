@@ -9,6 +9,23 @@ data_files:
     - "data/movies_known_test.jsonl"
   test:
     - "data/both_prompts_test_text.jsonl"
+data_config:
+  exclude_names: # These are names that will be evaluated in the "reversal" position in the eval set so exclude Wiki articles that include them
+    - "Bruce Willis"
+    - "Steve Martin"
+    - "Leonardo DiCaprio"
+    - "Russell Crowe"
+    - "Ben Affleck"
+    - "Julia Lambert"
+    - "Amelia Stark"
+    - "Andrew Taylor"
+    - "Sarah Johnson"
+    - "Ethan James"
+    - "Neil Armstrong"
+    - "Hugh Grant"
+    - "Helen Hunt"
+    - "Heath Ledger"
+    - "George Clooney"
 output_folder: "/net/projects/clab/tnief/bidirectional-reversal/results/"
 training:
   n_wiki_articles: 16  # Number of wikipedia articles to supplement the training data with

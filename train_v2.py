@@ -4,6 +4,7 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import spacy
@@ -230,6 +231,7 @@ def preprocess_logits_for_metrics(
     pad_token_id: int = -100,
     token_idx: int = -2,
     logits_dir: Path = Path("logits"),
+    tokenizer: Any = None,
     # output_filename: str = "logits_output.json",
 ) -> (torch.Tensor, torch.Tensor):
     """
@@ -271,6 +273,7 @@ def preprocess_logits_for_metrics(
                 {
                     "sequence_index": i,
                     "token_index": target_index.item(),
+                    "decoded_token": tokenizer.decode([labels[i, target_index].item()]),
                     "logits": logits[i, target_index - 1, :]
                     .cpu()
                     .tolist(),  # Convert to list for saving
@@ -322,6 +325,17 @@ def train(config_path):
 
     model_name = model_checkpoint.split("/")[-1]
     slurm_job_id = os.environ.get("SLURM_JOB_ID", "local")
+
+    training_folder = model_checkpoint + datetime.now().strftime("%Y%m%d_%H%M")
+
+    OUTPUT_FOLDER = Path(config["output_folder"])
+    output_dir = (
+        OUTPUT_FOLDER / training_folder
+        if not SMOKE_TEST
+        else OUTPUT_FOLDER / f"{training_folder}_smoke_test"
+    )
+    LOGITS_DIR = output_dir / "logits"
+    LOGITS_DIR.mkdir(parents=True, exist_ok=True)
 
     ### WANDB & LOGGING ###
 
@@ -482,16 +496,8 @@ def train(config_path):
                 return False
         return True
 
-    # TODO: Set this up in config...or maybe read this from the dataset?
-    exclude_strings = [
-        "Samuel L. Jackson",
-        "Steve Martin",
-        "Leonardo DiCaprio",
-        "Russell Crowe",
-        "Ben Affleck",
-    ]
-
-    # Filter actors from the training set from wikitext
+    # Filter eval names from the wikitext training set
+    exclude_strings = config["data_config"]["exclude_names"]
     wikitext_train_filtered = wikitext_train.filter(
         lambda example: filter_fn(example, exclude_strings)
     )
@@ -515,7 +521,25 @@ def train(config_path):
         names_in_text = extract_names_from_text(text)
         all_names.update(names_in_text)
 
+    # Save names from the training run for evaluation
     first_names = {name.split()[0] for name in all_names}
+    first_names_less_eval = first_names.copy()
+
+    for first_name in exclude_strings:
+        first_name = first_name.split()[0]
+        first_names_less_eval.discard(first_name)
+
+    # TODO: Why doesn't this work?
+    NAMES_DIR = output_dir / "names"
+    NAMES_DIR.mkdir(parents=True, exist_ok=True)
+
+    with open(NAMES_DIR / "first_names.yaml", "w") as f:
+        yaml.dump(list(first_names), f)
+
+    with open(NAMES_DIR / "first_names_less_eval.yaml", "w") as f:
+        yaml.dump(list(first_names_less_eval), f)
+
+    logging.info(f"First names for evaluation saved to: {NAMES_DIR}")
 
     filtered_dataset = DatasetDict(
         {
@@ -543,16 +567,16 @@ def train(config_path):
         wikitext_val_tokenized, "wikitext", halfway_steps, tokenizer=tokenizer
     )
 
-    training_folder = model_checkpoint + datetime.now().strftime("%Y%m%d_%H%M")
+    # training_folder = model_checkpoint + datetime.now().strftime("%Y%m%d_%H%M")
 
-    OUTPUT_FOLDER = config["output_folder"]
-    output_dir = (
-        OUTPUT_FOLDER + training_folder
-        if not SMOKE_TEST
-        else OUTPUT_FOLDER + f"{training_folder}_smoke_test"
-    )
-    LOGITS_DIR = Path(output_dir) / "logits"
-    LOGITS_DIR.mkdir(parents=True, exist_ok=True)
+    # OUTPUT_FOLDER = config["output_folder"]
+    # output_dir = (
+    #     OUTPUT_FOLDER + training_folder
+    #     if not SMOKE_TEST
+    #     else OUTPUT_FOLDER + f"{training_folder}_smoke_test"
+    # )
+    # LOGITS_DIR = Path(output_dir) / "logits"
+    # LOGITS_DIR.mkdir(parents=True, exist_ok=True)
 
     # TODO: Doesn't generalize to other models besides gemma
     if FREEZE_EMBEDDINGS:
@@ -596,6 +620,7 @@ def train(config_path):
             period_token_id=PERIOD_TOKEN_ID,
             pad_token_id=-100,
             logits_dir=LOGITS_DIR,
+            tokenizer=tokenizer,
         )
 
     smoke_test_limit = (
