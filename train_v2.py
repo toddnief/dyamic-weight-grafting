@@ -1,303 +1,29 @@
 import argparse
-import json
-import logging
-import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
-import numpy as np
 import spacy
 import torch
 import yaml
 from datasets import DatasetDict, concatenate_datasets, load_dataset
 from torch.utils.data import DataLoader
-from tqdm import tqdm
-
-# TODO: Ruff behavior is weird...why is this removing stuff that is conditionally used?
 from transformers import (
     AutoModelForCausalLM,
-    AutoTokenizer,  # noqa
+    AutoTokenizer,  # noqa - prevent removing conditional imports
     BartTokenizer,
     GPT2LMHeadModel,
     GPT2Tokenizer,
     Trainer,
-    TrainerCallback,
     TrainingArguments,
 )
 
 import wandb
-
-DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+from callbacks import CustomEvalCallback, GenerationEvalCallback, LoggingCallback
+from constants import logging
+from utils_train import compute_metrics, preprocess_logits_for_metrics
 
 nlp = spacy.load("en_core_web_sm")
 SCRIPT_DIR = Path(__file__).resolve().parent
-
-log_format = "%(asctime)s - %(levelname)s - %(message)s"
-logging.basicConfig(
-    level=logging.INFO,  # Set the logging level to INFO
-    format=log_format,
-    handlers=[
-        logging.StreamHandler(),  # This sends the output to the console (SLURM terminal)
-    ],
-)
-
-
-def eval_generation(model, tokenizer, prompt, truncation, max_length=1024):
-    input_ids = tokenizer.encode(prompt, return_tensors="pt").to(DEVICE)
-    input_ids = input_ids[:, :-truncation]
-    logging.info(f"Prompt: {tokenizer.decode(input_ids[0], skip_special_tokens=True)}")
-    generated_ids = model.generate(
-        input_ids,
-        attention_mask=input_ids.ne(tokenizer.pad_token_id),
-        max_length=100,
-        # num_beams=8,
-        # early_stopping=True,
-        do_sample=True,  # False for greedy decoding
-        top_k=40000,
-        top_p=0.9,
-        # prefix_allowed_tokens_fn=allowed_tokens_function  # Uncomment if using allowed tokens function
-    )
-    logging.info(
-        f"Generated: {tokenizer.decode(generated_ids[0], skip_special_tokens=True)}"
-    )
-
-
-class GenerationEvalCallback(TrainerCallback):
-    def __init__(self, eval_dataset, eval_steps, tokenizer, device=DEVICE):
-        self.eval_dataset = eval_dataset
-        self.eval_steps = eval_steps
-        self.tokenizer = tokenizer
-        self.device = device
-
-    def on_evaluate(self, args, state, control, **kwargs):
-        if state.global_step % self.eval_steps == 0:
-            model = kwargs["model"]
-            model.to(self.device)
-            model.eval()
-
-            eval_dataloader = torch.utils.data.DataLoader(
-                self.eval_dataset, batch_size=1, shuffle=False
-            )
-            with torch.no_grad():
-                for batch in tqdm(eval_dataloader, desc="Evaluating Generation"):
-                    prompt = batch["text"][0]
-                    eval_generation(model, self.tokenizer, prompt, truncation=3)
-            model.train()
-
-
-class CustomEvalCallback(TrainerCallback):
-    def __init__(
-        self,
-        second_eval_dataset,
-        dataset_name,
-        eval_steps,
-        tokenizer,
-        eval_batch_size=4,
-    ):
-        self.second_eval_dataset = second_eval_dataset
-        self.eval_steps = eval_steps
-        self.eval_batch_size = eval_batch_size
-        self.dataset_name = dataset_name
-        self.tokenizer = tokenizer
-
-    def on_evaluate(self, args, state, control, **kwargs):
-        if state.global_step % self.eval_steps == 0:
-            logging.info(
-                f"Evaluating on ({self.dataset_name}) at step {state.global_step}"
-            )
-
-            model = kwargs["model"]
-            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-            model.to(device)
-            model.eval()
-
-            eval_dataloader = torch.utils.data.DataLoader(
-                self.second_eval_dataset, batch_size=self.eval_batch_size
-            )
-
-            # Manual evaluation loop
-            total_loss = 0
-            total_steps = 0
-            with torch.no_grad():
-                for batch in tqdm(eval_dataloader):
-                    inputs = batch["input_ids"].to(device)
-                    labels = batch["labels"].to(device)
-                    outputs = model(input_ids=inputs, labels=labels)
-                    loss = outputs.loss
-                    total_loss += loss.item()
-                    total_steps += 1
-            avg_loss = total_loss / total_steps
-            perplexity = torch.exp(torch.tensor(avg_loss))
-            if self.dataset_name == "wikitext":
-                breakpoint()
-            logging.info(f"Perplexity on {self.dataset_name}: {perplexity.item()}")
-            wandb.log(
-                {
-                    "step": state.global_step,
-                    "opentext_loss": avg_loss,
-                    f"{self.dataset_name}_perplexity": perplexity.item(),
-                }
-            )
-
-
-class LoggingCallback(TrainerCallback):
-    """Logs metrics at the end of each epoch."""
-
-    def on_evaluate(self, args, state, control, metrics=None, **kwargs):
-        if metrics:
-            if "eval_loss" in metrics:
-                perplexity = torch.exp(
-                    torch.tensor(metrics["eval_loss"])
-                )  # Perplexity is exp of cross entropy loss
-                metrics["perplexity"] = perplexity.item()
-                logging.info(f"Perplexity: {metrics['perplexity']}")
-
-            if "eval_accuracy" in metrics:
-                logging.info(f"Accuracy: {metrics['eval_accuracy']}")
-
-            logging.info(f"Validation metrics: {metrics}")
-
-        torch.cuda.empty_cache()
-
-    def on_log(self, args, state, control, logs=None, **kwargs):
-        # Note: Use the custom logging setup
-        if logs:
-            logging.info(logs)
-
-
-def compute_metrics(eval_pred):
-    logits, labels = eval_pred[0]
-    predictions = np.argmax(logits, axis=-1)
-
-    accuracy = np.mean(predictions == labels)
-
-    logits_tensor = torch.tensor(logits)
-    labels_tensor = torch.tensor(labels)
-
-    # Filter out padding tokens (Should already be removed but just in case)
-    mask_tensor = labels_tensor != -100
-    filtered_logits = logits_tensor[mask_tensor]
-    filtered_labels_tensor = labels_tensor[mask_tensor]
-
-    loss_fn = torch.nn.CrossEntropyLoss()
-    loss = loss_fn(filtered_logits, filtered_labels_tensor)
-    perplexity = torch.exp(loss)
-
-    return {"accuracy": accuracy, "loss": loss.item(), "perplexity": perplexity.item()}
-
-
-# def preprocess_logits_for_metrics(
-#     logits, labels, period_token_id, pad_token_id=-100, token_idx=-2
-# ):
-#     batch_size, seq_length, vocab_size = logits.shape
-
-#     selected_logits = []
-#     selected_labels = []
-
-#     for i in range(batch_size):
-#         label_sequence = labels[i]
-
-#         non_pad_indices = (label_sequence != pad_token_id).nonzero(as_tuple=True)[0]
-#         period_indices = (label_sequence == period_token_id).nonzero(as_tuple=True)[0]
-
-#         if len(period_indices) > 0:
-#             last_period_idx = period_indices[-1]  # Get the index of the last period
-#             last_two_indices = non_pad_indices[non_pad_indices < last_period_idx][
-#                 token_idx:
-#             ]
-#         else:
-#             # No period found, just take the last two
-#             last_two_indices = non_pad_indices[token_idx:]
-
-#         # Note: Shift logits by 1 to get logits for the next token (labels and logits are shifted)
-#         selected_logits.append(logits[i, last_two_indices - 1, :])
-#         selected_labels.append(labels[i, last_two_indices])
-
-#     selected_logits = torch.stack(
-#         selected_logits, dim=0
-#     )  # Shape: (batch_size, num_tokens, vocab_size)
-#     selected_labels = torch.stack(
-#         selected_labels, dim=0
-#     )  # Shape: (batch_size, num_tokens)
-
-#     return selected_logits, selected_labels
-
-
-def preprocess_logits_for_metrics(
-    logits: torch.Tensor,
-    labels: torch.Tensor,
-    period_token_id: int,
-    pad_token_id: int = -100,
-    token_idx: int = -2,
-    logits_dir: Path = Path("logits"),
-    tokenizer: Any = None,
-    # output_filename: str = "logits_output.json",
-) -> (torch.Tensor, torch.Tensor):
-    """
-    Returns the logits and labels for the token exactly two positions before the last period in each sequence.
-    Also saves the logits and corresponding labels to a JSON file.
-
-    Parameters:
-        logits: The predicted logits for each token, of shape (batch_size, seq_length, vocab_size).
-        labels: The ground truth labels, of shape (batch_size, seq_length).
-        period_token_id: The token ID representing a period in the sequence.
-        pad_token_id: The token ID representing padding (default is -100).
-        token_idx: The index from the period to get the token before it (default is -2).
-        output_file: Path to the file where the logits will be saved (default is "logits_output.json").
-
-    Returns:
-        selected_logits: Logits for the token exactly two tokens before the last period for each sequence.
-        selected_labels: Corresponding labels for the selected logits.
-    """
-    batch_size, seq_length, vocab_size = logits.shape
-    selected_logits = []
-    selected_labels = []
-
-    logits_to_save = []
-
-    for i in range(batch_size):
-        label_sequence = labels[i]
-
-        non_pad_indices = (label_sequence != pad_token_id).nonzero(as_tuple=True)[0]
-        period_indices = (label_sequence == period_token_id).nonzero(as_tuple=True)[0]
-
-        if len(period_indices) > 0:
-            # Get the index of the last period in the sequence
-            last_period_idx = period_indices[-1]
-            target_index = non_pad_indices[non_pad_indices < last_period_idx][token_idx]
-            selected_logits.append(logits[i, target_index - 1, :])
-            selected_labels.append(labels[i, target_index])
-
-            logits_to_save.append(
-                {
-                    "sequence_index": i,
-                    "token_index": target_index.item(),
-                    "decoded_token": tokenizer.decode([labels[i, target_index].item()]),
-                    "logits": logits[i, target_index - 1, :]
-                    .cpu()
-                    .tolist(),  # Convert to list for saving
-                    "label": labels[
-                        i, target_index
-                    ].item(),  # Save the corresponding label
-                }
-            )
-        else:
-            # If no period is found, skip this sequence
-            continue
-
-    output_file = (
-        logits_dir / f"logits_output_{datetime.now().strftime('%Y%m%d_%H%M')}.json"
-    )  # Note: Can't access epoch so save with timestamp
-    with open(output_file, "w") as f:
-        json.dump(logits_to_save, f, indent=4)
-
-    selected_logits = torch.stack(
-        selected_logits, dim=0
-    )  # Shape: (batch_size, vocab_size)
-    selected_labels = torch.stack(selected_labels, dim=0)  # Shape: (batch_size)
-
-    return selected_logits, selected_labels
 
 
 def train(config_path):
@@ -324,7 +50,6 @@ def train(config_path):
         model_checkpoint = "google/gemma-1.1-2b-it"
 
     model_name = model_checkpoint.split("/")[-1]
-    slurm_job_id = os.environ.get("SLURM_JOB_ID", "local")
 
     training_folder = model_checkpoint + datetime.now().strftime("%Y%m%d_%H%M")
 
@@ -344,6 +69,7 @@ def train(config_path):
         name=RUN_NAME,
     )
 
+    # TODO: Set up a factory function for model and tokenizer
     ### GPT2 ###
 
     if "gpt" in model_name:
