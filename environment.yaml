@@ -19,7 +19,9 @@ dependencies:
       - spacy
       - datasets
       - matplotlib
+      - openai==1.52.0
       - tqdm
       - transformers
       - wandb
+      - python-dotenv
       - pyyaml

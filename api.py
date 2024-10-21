@@ -9,9 +9,9 @@ import numpy as np
 from constants import logging
 
 
-def get_gpt4_completion(
+def get_openai_completion(
     client,
-    user_prompt: str,
+    prompt: str,
     temperature: float = 0.5,
     model_id: str = "gpt-4o-mini",
     max_tokens: int = 2048,
@@ -21,7 +21,7 @@ def get_gpt4_completion(
 
     Args:
         client: The OpenAI API client
-        user_prompt: The input prompt
+        prompt: The input prompt
         temperature: A float between 0 and 1 that controls the randomness of the generated output
         model_id: The identifier for the model to use
         max_tokens: The maximum number of tokens to generate in the completion
@@ -36,7 +36,7 @@ def get_gpt4_completion(
             messages=[
                 {
                     "role": "user",
-                    "content": user_prompt,
+                    "content": prompt,
                 },
             ],
             temperature=temperature,
