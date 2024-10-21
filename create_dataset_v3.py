@@ -22,15 +22,28 @@ if __name__ == "__main__":
         input_data = [json.loads(line) for line in file.readlines()]
 
     rephrase_prompt = config["rephrase_prompt"]
+    test_prompt = config["test_prompt"]
     temperature = config["temperature"]
 
     client = OpenAI(api_key=OPENAI_API_KEY)
 
     # TODO: Make sure we get a certain number of rephrases for each article
     rephrased_articles = []
+    test_examples = []
     for article in input_data:
         rephrased_articles.append(article)
-        entity = article["entity"]
+        first_entity = article["first_entity"]
+        second_entity = article["second_entity"]
+        movie = article["movie"]
+        test_examples.append(
+            {
+                "text": test_prompt.format(
+                    first_entity=first_entity,
+                    second_entity=second_entity,
+                    movie=movie,
+                )
+            }
+        )
 
         while True:
             rephrase = get_openai_completion(
@@ -39,33 +52,21 @@ if __name__ == "__main__":
                 temperature=temperature,
             )
 
-            # Make sure entity name only appears once in rephrase
-            # entity_words = entity.split()
-            # word_counts = {
-            #     word: len(re.findall(rf"\b{re.escape(word)}\b", rephrase))
-            #     for word in entity_words
-            # }
-            # Break and append if entity only appears once
-            # if all(count == 1 for count in word_counts.values()):
-            #     break
-
-            entity_count = len(re.findall(rf"\b{re.escape(entity)}\b", rephrase))
+            entity_count = len(re.findall(rf"\b{re.escape(first_entity)}\b", rephrase))
             if entity_count == 1:
                 break
 
             print(
-                f"Retrying rephrase for entity: {entity} due to multiple occurrences. \n {rephrase}"
+                f"Retrying rephrase for first_entity: {first_entity} due to multiple occurrences. \n {rephrase}"
             )
 
-        rephrased_articles.append({"entity": entity, "text": rephrase})
+        rephrased_articles.append({"first_entity": first_entity, "text": rephrase})
 
     output_file = input_file.with_name(f"{input_file.stem}_rephrased_{TIMESTAMP}.jsonl")
     with open(output_file, "w") as output_file:
         for article in rephrased_articles:
             output_file.write(json.dumps(article) + "\n")
-
-    # Set up rephrasing of reviews
-
-    # Filter reviews for problems (string matching)
-    # Create test sets
-    # Create training sets
+    output_test_file = input_file.with_name(f"{input_file.stem}_test_{TIMESTAMP}.jsonl")
+    with open(output_test_file, "w") as output_test_file:
+        for example in test_examples:
+            output_test_file.write(json.dumps(example) + "\n")
