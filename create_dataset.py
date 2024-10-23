@@ -27,7 +27,6 @@ if __name__ == "__main__":
 
     client = OpenAI(api_key=OPENAI_API_KEY)
 
-    # TODO: Make sure we get a certain number of rephrases for each article
     rephrased_articles = []
     test_examples = []
     for article in input_data:
@@ -45,28 +44,33 @@ if __name__ == "__main__":
             }
         )
 
-        while True:
-            rephrase = get_openai_completion(
-                client,
-                rephrase_prompt.format(article=article["text"]),
-                temperature=temperature,
-            )
+        for _ in range(3):
+            while True:
+                rephrase = get_openai_completion(
+                    client,
+                    rephrase_prompt.format(article=article["text"]),
+                    temperature=temperature,
+                )
 
-            entity_count = len(re.findall(rf"\b{re.escape(first_entity)}\b", rephrase))
-            if entity_count == 1:
-                break
+                entity_count = len(
+                    re.findall(rf"\b{re.escape(first_entity)}\b", rephrase)
+                )
+                if entity_count == 1:
+                    break
 
-            print(
-                f"Retrying rephrase for first_entity: {first_entity} due to multiple occurrences. \n {rephrase}"
-            )
+                print(
+                    f"Retrying rephrase for first_entity: {first_entity} due to multiple occurrences. \n {rephrase}"
+                )
 
-        rephrased_articles.append({"first_entity": first_entity, "text": rephrase})
+            rephrased_articles.append({"first_entity": first_entity, "text": rephrase})
 
     output_file = input_file.with_name(f"{input_file.stem}_rephrased_{TIMESTAMP}.jsonl")
     with open(output_file, "w") as output_file:
         for article in rephrased_articles:
             output_file.write(json.dumps(article) + "\n")
-    output_test_file = input_file.with_name(f"{input_file.stem}_test_{TIMESTAMP}.jsonl")
+    output_test_file = input_file.with_name(
+        f"{input_file.stem.replace('_train', '')}_test_{TIMESTAMP}.jsonl"
+    )
     with open(output_test_file, "w") as output_test_file:
         for example in test_examples:
             output_test_file.write(json.dumps(example) + "\n")

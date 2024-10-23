@@ -1,14 +1,14 @@
-smoke_test: true
+smoke_test: false
 run_name: "gemma-reversal-movies-known-16-wiki"
 model: "gemma" # Choices: "bart", "gpt2", "pythia-1.4b", "gemma"
 data_files:
   train:
     # - "data/both_prompts_train_text.jsonl"
-    - "data/movies_known_train.jsonl"
+    - "data/movies_known_train_rephrased.jsonl"
   validation: 
     - "data/movies_known_test.jsonl"
   test:
-    - "data/both_prompts_test_text.jsonl"
+    - "data/movies_known_test.jsonl"
 data_config:
   exclude_names: # These are names that will be evaluated in the "reversal" position in the eval set so exclude Wiki articles that include them
     - "Bruce Willis"
@@ -28,7 +28,7 @@ data_config:
     - "George Clooney"
 output_folder: "/net/projects/clab/tnief/bidirectional-reversal/results/"
 training:
-  n_wiki_articles: 16  # Number of wikipedia articles to supplement the training data with
+  n_wiki_articles: 1600  # Number of wikipedia articles to supplement the training data with
   learning_rate: 2.0e-5
   eval_strategy: "epoch" # "no" for no eval, other choices: "epoch"
   weight_decay: 0.01
@@ -41,5 +41,5 @@ training:
   fp16: true
   freeze_embeddings: false
 eval:
-  trained_checkpoint: "/net/projects/clab/tnief/bidirectional-reversal/results/google/gemma-1.1-2b-it20241002_2236/checkpoint-40"
-  # trained_checkpoint: "google/gemma-1.1-2b-it"
+  # trained_checkpoint: "/net/projects/clab/tnief/bidirectional-reversal/results/google/gemma-1.1-2b-it20241002_2236/checkpoint-40"
+  trained_checkpoint: "google/gemma-1.1-2b-it"
