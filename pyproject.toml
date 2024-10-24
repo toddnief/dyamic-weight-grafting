@@ -1,0 +1,12 @@
+[project]
+name = "reversal"
+version = "0.1.0"
+description = "Code for running supervised fine-tuning experiments exploring the reversal curse."
+readme = "README.md"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"

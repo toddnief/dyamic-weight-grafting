@@ -9,5 +9,5 @@
 # Note: This enables passing the config file as an argument to the script from the Makefile
 CONFIG_FILE=${CONFIG:-config_train.yaml}
 
-python train.py --config $CONFIG_FILE
+python src/reversal/train.py --config $CONFIG_FILE
 
