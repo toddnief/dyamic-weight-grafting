@@ -1,4 +1,4 @@
-smoke_test: false
+smoke_test: true
 run_name: "gemma-reversal-movies-known-16-wiki"
 model: "gemma" # Choices: "bart", "gpt2", "pythia-1.4b", "gemma"
 data_files:
@@ -9,23 +9,24 @@ data_files:
     - "data/movies_known_test.jsonl"
   test:
     - "data/movies_known_test.jsonl"
-data_config:
-  exclude_names: # These are names that will be evaluated in the "reversal" position in the eval set so exclude Wiki articles that include them
-    - "Bruce Willis"
-    - "Steve Martin"
-    - "Leonardo DiCaprio"
-    - "Russell Crowe"
-    - "Ben Affleck"
-    - "Julia Lambert"
-    - "Amelia Stark"
-    - "Andrew Taylor"
-    - "Sarah Johnson"
-    - "Ethan James"
-    - "Neil Armstrong"
-    - "Hugh Grant"
-    - "Helen Hunt"
-    - "Heath Ledger"
-    - "George Clooney"
+    - "data/movies_misc_test.jsonl"
+# data_config:
+#   exclude_names: # These are names that will be evaluated in the "reversal" position in the eval set so exclude Wiki articles that include them
+#     - "Bruce Willis"
+#     - "Steve Martin"
+#     - "Leonardo DiCaprio"
+#     - "Russell Crowe"
+#     - "Ben Affleck"
+#     - "Julia Lambert"
+#     - "Amelia Stark"
+#     - "Andrew Taylor"
+#     - "Sarah Johnson"
+#     - "Ethan James"
+#     - "Neil Armstrong"
+#     - "Hugh Grant"
+#     - "Helen Hunt"
+#     - "Heath Ledger"
+#     - "George Clooney"
 output_folder: "/net/projects/clab/tnief/bidirectional-reversal/results/"
 training:
   n_wiki_articles: 1600  # Number of wikipedia articles to supplement the training data with

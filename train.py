@@ -202,14 +202,21 @@ def train(config_path):
         type="torch", columns=["input_ids", "attention_mask", "labels"]
     )
 
-    wikitext = load_dataset("wikitext", "wikitext-2-raw-v1")
-    wikitext_val = wikitext["validation"].select(range(500))
+    wikitext = load_dataset("wikitext", "wikitext-2-v1")
+    # Note: Lots of blank lines so need to filter these out
+    wikitext_train_filtered = wikitext["train"].filter(
+        lambda example: example["text"].strip() != ""
+    )
+    wikitext_val_filtered = wikitext["validation"].filter(
+        lambda example: example["text"].strip() != ""
+    )
+    wikitext_val = wikitext_val_filtered.select(range(500))
     wikitext_val_tokenized = wikitext_val.map(preprocess_data, batched=True)
     wikitext_val_tokenized.set_format(
         type="torch", columns=["input_ids", "attention_mask", "labels"]
     )
 
-    wikitext_train = wikitext["train"].select(range(N_WIKI_ARTICLES))
+    wikitext_train = wikitext_train_filtered.select(range(N_WIKI_ARTICLES))
 
     logging.info("Loading dataset...")
     data_files = config["data_files"]
@@ -223,8 +230,11 @@ def train(config_path):
         return True
 
     # Filter eval names from the wikitext training set
-    # TODO: Add names is entries in the jsonl and do it that way
-    exclude_strings = config["data_config"]["exclude_names"]
+    exclude_strings = []
+    for example in dataset["test"]:
+        exclude_strings.append(example["second_entity"])
+    logging.info(f"Excluding names: {exclude_strings}")
+
     wikitext_train_filtered = wikitext_train.filter(
         lambda example: filter_fn(example, exclude_strings)
     )
@@ -247,8 +257,6 @@ def train(config_path):
         return {ent.text for ent in doc.ents if ent.label_ == "PERSON"}
 
     dataloader = DataLoader(combined_train_set, batch_size=1, shuffle=False)
-    # TODO: This is throwing errors — a bunch of the wikitext is blank strings?
-    # breakpoint()
 
     # Initialize an empty set to collect all unique names across the dataset
     all_names = set()
