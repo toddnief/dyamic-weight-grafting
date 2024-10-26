@@ -12,7 +12,7 @@ dependencies:
   - ipywidgets
   - pip
   - pip:
-      - e . # install current directory — config is in pyproject.toml
+      - e . # install current directory — package config is in pyproject.toml
       - accelerate==1.0.0
       - numpy
       - spacy
