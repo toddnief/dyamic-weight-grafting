@@ -11,12 +11,11 @@ from transformers import Trainer, TrainingArguments
 
 import wandb
 from reversal.callbacks import (
-    CustomEvalCallback,
+    AdditionalEvalCallback,
     GenerationEvalCallback,
     LoggingCallback,
 )
-from reversal.collator import ReversalDataCollator
-from reversal.constants import logging
+from reversal.constants import DEVICE, logging
 from reversal.model_factory import model_factory
 from reversal.utils_train import compute_metrics, preprocess_logits_for_metrics
 
@@ -61,37 +60,14 @@ def train(config_path):
     LOGITS_DIR.mkdir(parents=True, exist_ok=True)
 
     ### WANDB & LOGGING ###
-
     wandb.init(
         project="reversal",
         name=RUN_NAME,
     )
 
-    logging.info("Loading openwebtext and wikitext...")
-    openwebtext = load_dataset("openwebtext", trust_remote_code=True)
-    openwebtext_val = openwebtext["train"].select(range(500))
-    openwebtext_val_tokenized = openwebtext_val.map(preprocess_data, batched=True)
-    openwebtext_val_tokenized.set_format(
-        type="torch", columns=["input_ids", "attention_mask", "labels"]
-    )
-
-    wikitext = load_dataset("wikitext", "wikitext-2-v1")
-    # Note: Lots of blank lines so need to filter these out
-    wikitext_train_filtered = wikitext["train"].filter(
-        lambda example: example["text"].strip() != ""
-    )
-    wikitext_val_filtered = wikitext["validation"].filter(
-        lambda example: example["text"].strip() != ""
-    )
-    wikitext_val = wikitext_val_filtered.select(range(500))
-    wikitext_val_tokenized = wikitext_val.map(preprocess_data, batched=True)
-    wikitext_val_tokenized.set_format(
-        type="torch", columns=["input_ids", "attention_mask", "labels"]
-    )
-
-    wikitext_train = wikitext_train_filtered.select(range(N_WIKI_ARTICLES))
-
-    logging.info("Loading dataset...")
+    # TODO: This is a mess — reorganize this so it's clearer what's happening
+    ### CUSTOM DATA PREP ###
+    logging.info("Loading custom dataset...")
     data_files = config["data_files"]
 
     dataset = load_dataset("json", data_files=data_files)
@@ -109,6 +85,40 @@ def train(config_path):
         [col for col in dataset["train"].column_names if col not in ["text", "entity"]]
     )
 
+    ### OPENWEBTEXT PREP ###
+    logging.info("Loading openwebtext...")
+    openwebtext = load_dataset("openwebtext", trust_remote_code=True)
+    openwebtext_val = openwebtext["train"].select(range(500))
+    # TODO: Do I need to add an entity column here?
+    # openwebtext_val = openwebtext_val.map(lambda example: {**example, "entity": ""})
+    openwebtext_val_tokenized = openwebtext_val.map(preprocess_data, batched=True)
+    openwebtext_val_tokenized.set_format(
+        type="torch", columns=["input_ids", "attention_mask", "labels"]
+    )
+
+    ### WIKITEXT PREP ###
+    logging.info("Loading wikitext...")
+    wikitext = load_dataset("wikitext", "wikitext-2-v1")
+
+    # Note: Lots of blank lines in the wikitext dataset so need to filter these out
+    wikitext_filtered = {
+        split: data.filter(lambda example: example["text"].strip() != "")
+        for split, data in wikitext.items()
+    }
+    # Note: Add "entity" column to avoid collation issues
+    wikitext_filtered = {
+        split: data.map(lambda example: {**example, "entity": ""})
+        for split, data in wikitext_filtered.items()
+    }
+    wikitext_train = wikitext_filtered["train"].select(range(N_WIKI_ARTICLES))
+
+    # TODO: Validation count should probably be specified in the config
+    wikitext_val = wikitext_filtered["validation"].select(range(500))
+    wikitext_val_tokenized = wikitext_val.map(preprocess_data, batched=True)
+    wikitext_val_tokenized.set_format(
+        type="torch", columns=["input_ids", "attention_mask", "labels"]
+    )
+
     def filter_fn(example, exclude_strings):
         for s in exclude_strings:
             if s in example["text"]:
@@ -121,27 +131,19 @@ def train(config_path):
         exclude_strings.append(example["entity"])
     logging.info(f"Excluding names: {exclude_strings}")
 
-    wikitext_train_filtered = wikitext_train.filter(
+    wikitext_train = wikitext_train.filter(
         lambda example: filter_fn(example, exclude_strings)
     )
 
-    # Set up entity column so we can find correct position for perplexity eval
-    # Note: Using a custom collator so need this in everything
-    wikitext_train_filtered = wikitext_train_filtered.map(
-        lambda example: {"entity": ""}
-    )
-    wikitext_val_tokenized = wikitext_val_tokenized.map(lambda example: {"entity": ""})
-    openwebtext_val_tokenized = openwebtext_val_tokenized.map(
-        lambda example: {"entity": ""}
-    )
-
+    ### COMBINE DATASETS ###
     combined_train_set = concatenate_datasets(
         [
             dataset["train"],
-            wikitext_train_filtered,
+            wikitext_train,
         ]
     )
 
+    ### EXTRACT NAMES IN TRAINING DATA ###
     def extract_names_from_text(text):
         """Extracts and returns a set of unique names from the input text."""
         doc = nlp(text)
@@ -157,7 +159,6 @@ def train(config_path):
         names_in_text = extract_names_from_text(text)
         all_names.update(names_in_text)
 
-    # Save names from the training run for evaluation
     first_names = {name.split()[0] for name in all_names}
     first_names_less_eval = first_names.copy()
 
@@ -184,23 +185,47 @@ def train(config_path):
         }
     )
 
-    # TODO: Does finetuning on any dataset cause the same forgetting issue?
     tokenized_datasets = filtered_dataset.map(preprocess_data, batched=True)
+    # tokenized_datasets.set_format(
+    #     type="torch", columns=["input_ids", "attention_mask", "labels"]
+    # )
 
+    ### TRAINING PREP ###
     num_training_examples = len(tokenized_datasets["train"])
     train_batch_size = config["training"]["per_device_train_batch_size"]
     steps_per_epoch = num_training_examples // train_batch_size
     halfway_steps = steps_per_epoch // 2
 
     generation_eval_callback = GenerationEvalCallback(
-        dataset["validation"], halfway_steps, tokenizer=tokenizer
+        dataset["validation"], halfway_steps, tokenizer=tokenizer, device=DEVICE
     )
-    openwebtext_eval_callback = CustomEvalCallback(
-        openwebtext_val_tokenized, "openwebtext", halfway_steps, tokenizer=tokenizer
+    openwebtext_eval_callback = AdditionalEvalCallback(
+        openwebtext_val_tokenized,
+        "openwebtext",
+        halfway_steps,
+        tokenizer=tokenizer,
+        device=DEVICE,
     )
-    wikitext_eval_callback = CustomEvalCallback(
+    entity_eval_callback = AdditionalEvalCallback(
+        tokenized_datasets["validation"],
+        "entity",
+        halfway_steps,
+        tokenizer=tokenizer,
+        device=DEVICE,
+        entity_perplexity=True,
+    )
+    # TODO: Figure out perplexity/padding token issue with wikitext — is this just the blank lines?
+    wikitext_eval_callback = AdditionalEvalCallback(
         wikitext_val_tokenized, "wikitext", halfway_steps, tokenizer=tokenizer
     )
+
+    callbacks = [
+        LoggingCallback,
+        entity_eval_callback,
+        openwebtext_eval_callback,
+        wikitext_eval_callback,
+        generation_eval_callback,
+    ]
 
     # TODO: Doesn't generalize to other models besides gemma
     if FREEZE_EMBEDDINGS:
@@ -253,7 +278,6 @@ def train(config_path):
         else None
     )
 
-    data_collator = ReversalDataCollator(tokenizer=tokenizer)
     trainer = Trainer(
         model=model,
         tokenizer=tokenizer,
@@ -265,15 +289,12 @@ def train(config_path):
         eval_dataset=tokenized_datasets["validation"]
         if not SMOKE_TEST
         else tokenized_datasets["validation"].select(range(smoke_test_limit)),
-        callbacks=[
-            LoggingCallback,
-            openwebtext_eval_callback,
-            generation_eval_callback,
-        ],
+        callbacks=callbacks,
         compute_metrics=compute_metrics,
         preprocess_logits_for_metrics=get_preprocessed_logits,  # Note: This calculates loss only on specified index
     )
 
+    ### TRAINING ###
     logging.info("Evaluating before training for baseline metrics...")
     trainer.evaluate()
 
