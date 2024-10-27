@@ -58,7 +58,7 @@ def preprocess_logits_for_metrics(
     labels: torch.Tensor,
     period_token_id: int,
     pad_token_id: int = -100,
-    token_idx: int = -2,
+    token_idx: int = -3,
     logits_dir: Path = Path("logits"),
     tokenizer: Any = None,
 ) -> (torch.Tensor, torch.Tensor):

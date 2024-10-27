@@ -1,5 +1,4 @@
 import torch
-import torch.nn.functional as F
 from constants import DEVICE, logging
 from tqdm import tqdm
 from transformers import TrainerCallback
@@ -41,7 +40,7 @@ class GenerationEvalCallback(TrainerCallback):
 class AdditionalEvalCallback(TrainerCallback):
     def __init__(
         self,
-        second_eval_dataset,
+        dataset,
         dataset_name,
         eval_steps,
         tokenizer,
@@ -49,7 +48,7 @@ class AdditionalEvalCallback(TrainerCallback):
         device=DEVICE,
         entity_perplexity=False,
     ):
-        self.second_eval_dataset = second_eval_dataset
+        self.dataset = dataset
         self.eval_steps = eval_steps
         self.eval_batch_size = eval_batch_size
         self.dataset_name = dataset_name
@@ -68,7 +67,7 @@ class AdditionalEvalCallback(TrainerCallback):
             model.eval()
 
             eval_dataloader = torch.utils.data.DataLoader(
-                self.second_eval_dataset, batch_size=self.eval_batch_size
+                self.dataset, batch_size=self.eval_batch_size
             )
 
             total_loss = 0
@@ -82,7 +81,7 @@ class AdditionalEvalCallback(TrainerCallback):
                             entity_token_count = (
                                 len(self.tokenizer.encode(batch["entity"][i])) + 1
                             )  # Note: <BOS> is included, <EOS> is not
-                            # Note: Sentences end with a period, so -1 for <BOS>, +1 for period token, -1 to predict the first entity token
+                            # Note: -1 for <BOS>, +1 for period token, -1 to predict the first entity token
                             eval_indexes.append(-entity_token_count)
                         # Note: Need to manage tensor shape explicitly here
                         inputs = (
@@ -93,35 +92,87 @@ class AdditionalEvalCallback(TrainerCallback):
                         labels = (
                             torch.stack(batch["labels"]).transpose(0, 1).to(self.device)
                         )
+                        attention_mask = (
+                            torch.stack(batch["attention_mask"])
+                            .transpose(0, 1)
+                            .to(self.device)
+                        )
                     else:
+                        # TODO: Does this work correctly?
                         # Note: Manage datatypes here since we don't do it for the dataset so we can acces the entity
                         inputs = torch.tensor(batch["input_ids"]).to(self.device)
                         labels = torch.tensor(batch["labels"]).to(self.device)
-                    outputs = model(input_ids=inputs, labels=labels)
+                        attention_mask = torch.tensor(batch["attention_mask"]).to(
+                            self.device
+                        )
+
+                    outputs = model(
+                        input_ids=inputs, labels=labels, attention_mask=attention_mask
+                    )
+                    # outputs = model(input_ids=inputs, labels=labels)
+                    # outputs = model(**inputs)
 
                     if self.entity_perplexity:
                         # Note: Calculate loss only for the first entity token
                         logits = (
                             outputs.logits
                         )  # Shape: (batch_size, seq_len, vocab_size)
-                        losses = []
-                        for i, eval_idx in enumerate(eval_indexes):  # Shape: batch_size
-                            target_logit = logits[i, eval_idx, :]  # Shape: vocab_size
-                            target_label = labels[
-                                i, eval_idx + 1
-                            ]  # Shifted label for next-token prediction
-                            losses.append(
-                                F.cross_entropy(
-                                    target_logit.unsqueeze(0), target_label.unsqueeze(0)
-                                )
-                            )
-                        # TODO: Is this correct?
-                        loss = torch.stack(losses).mean()
+
+                        filtered_logits = []
+                        filtered_labels = []
+                        for i, eval_idx in enumerate(eval_indexes):
+                            filtered_logits.append(
+                                logits[i, eval_idx, :]
+                            )  # Shape: vocab_size
+                            filtered_labels.append(
+                                labels[i, eval_idx + 1]
+                            )  # Shift by one for next token label
+
+                        # Stack collected logits and labels into tensors for batch processing
+                        filtered_logits_tensor = torch.stack(
+                            filtered_logits
+                        )  # Shape: (batch_size, vocab_size)
+                        filtered_labels_tensor = torch.tensor(
+                            filtered_labels, device=filtered_logits_tensor.device
+                        )  # Shape: batch_size
+
+                        loss_fn = torch.nn.CrossEntropyLoss()
+                        loss = loss_fn(filtered_logits_tensor, filtered_labels_tensor)
+                        perplexity = torch.exp(loss)
+
+                        # losses = []
+                        # for i, eval_idx in enumerate(eval_indexes):  # Shape: batch_size
+                        #     target_logit = logits[i, eval_idx, :]  # Shape: vocab_size
+                        #     target_label = labels[
+                        #         i, eval_idx + 1
+                        #     ]  # Shifted label for next-token prediction
+                        #     losses.append(
+                        #         F.cross_entropy(
+                        #             target_logit.unsqueeze(0), target_label.unsqueeze(0)
+                        #         )
+                        #     )
+                        #     logging.info(
+                        #         f"Input Token: {self.tokenizer.decode([inputs[i, eval_idx].item()])}"
+                        #     )
+                        #     logging.info(
+                        #         f"Logits: {target_logit[target_label.item()].item()}"
+                        #     )
+                        #     logging.info(f"Label: {target_label.item()}")
+                        #     logging.info(
+                        #         f"Decoded label: {self.tokenizer.decode([target_label])}"
+                        #     )
+                        #     logging.info(f"Loss for first example: {losses[i].item()}")
+                        #     prob = torch.softmax(target_logit, dim=0)[target_label]
+                        #     manual_loss = -torch.log(prob)
+                        #     logging.info(
+                        #         f"Manual loss (single-token): {manual_loss.item()}"
+                        #     )
+                        # loss = torch.stack(losses).mean()
+                        # breakpoint()
                     else:
                         loss = outputs.loss
                     total_loss += loss.item()
                     total_steps += 1
-                    breakpoint()
             # TODO: Will this be wrong for the entity perplexity?
             avg_loss = total_loss / total_steps
             perplexity = torch.exp(torch.tensor(avg_loss))

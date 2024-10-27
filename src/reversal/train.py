@@ -221,10 +221,10 @@ def train(config_path):
 
     callbacks = [
         LoggingCallback,
+        generation_eval_callback,
         entity_eval_callback,
         openwebtext_eval_callback,
         wikitext_eval_callback,
-        generation_eval_callback,
     ]
 
     # TODO: Doesn't generalize to other models besides gemma
