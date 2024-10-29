@@ -37,7 +37,8 @@ def train(config_path):
         config = yaml.safe_load(file)
 
     SMOKE_TEST = config["smoke_test"]
-    N_WIKI_ARTICLES = config["training"]["n_wiki_articles"]
+    N_SUPPLEMENTAL_TRAIN_EXAMPLES = config["training"]["n_supplemental_train_examples"]
+    N_VAL_EXAMPLES = config["training"]["n_val_examples"]
     FREEZE_EMBEDDINGS = config["training"]["freeze_embeddings"]
 
     RUN_NAME = config["run_name"]
@@ -66,6 +67,7 @@ def train(config_path):
     )
 
     # TODO: This is a mess — reorganize this so it's clearer what's happening
+    # Should probably have a data prep function that returns the datasets
     ### CUSTOM DATA PREP ###
     logging.info("Loading custom dataset...")
     data_files = config["data_files"]
@@ -88,15 +90,36 @@ def train(config_path):
     ### OPENWEBTEXT PREP ###
     logging.info("Loading openwebtext...")
     openwebtext = load_dataset("openwebtext", trust_remote_code=True)
-    openwebtext_val = openwebtext["train"].select(range(500))
-    # TODO: Do I need to add an entity column here?
-    # openwebtext_val = openwebtext_val.map(lambda example: {**example, "entity": ""})
-    openwebtext_val_tokenized = openwebtext_val.map(preprocess_data, batched=True)
-    openwebtext_val_tokenized.set_format(
-        type="torch", columns=["input_ids", "attention_mask", "labels"]
+    # Note: openwebtext doesn't have splits so create them
+    openwebtext = openwebtext.select(
+        range(N_SUPPLEMENTAL_TRAIN_EXAMPLES + N_VAL_EXAMPLES)
     )
+    openwebtext = openwebtext.train_test_split(test_size=N_VAL_EXAMPLES, shuffle=False)
+    openwebtext = DatasetDict(
+        {
+            "train": openwebtext["train"],
+            "validation": openwebtext["test"],
+        }
+    )
+    openwebtext = openwebtext.map(lambda example: {**example, "entity": ""})
+    openwebtext = openwebtext.map(preprocess_data, batched=True)
+
+    # openwebtext = openwebtext.map(lambda example: {**example, "entity": ""})
+    # openwebtext_train = openwebtext["train"].select(
+    #     range(N_SUPPLEMENTAL_TRAIN_EXAMPLES)
+    # )
+
+    # TODO: Set this up in config
+    # openwebtext_val = openwebtext["validation"].select(range(500))
+    # openwebtext_val_tokenized = openwebtext["validation"].map(
+    #     preprocess_data, batched=True
+    # )
+    # openwebtext_val_tokenized.set_format(
+    #     type="torch", columns=["input_ids", "attention_mask", "labels"]
+    # )
 
     ### WIKITEXT PREP ###
+    # TODO: Clean this up like the openwebtext data
     logging.info("Loading wikitext...")
     wikitext = load_dataset("wikitext", "wikitext-2-v1")
 
@@ -110,7 +133,7 @@ def train(config_path):
         split: data.map(lambda example: {**example, "entity": ""})
         for split, data in wikitext_filtered.items()
     }
-    wikitext_train = wikitext_filtered["train"].select(range(N_WIKI_ARTICLES))
+    # wikitext_train = wikitext_filtered["validation"].select(range(N_WIKI_ARTICLES))
 
     # TODO: Validation count should probably be specified in the config
     wikitext_val = wikitext_filtered["validation"].select(range(500))
@@ -118,6 +141,9 @@ def train(config_path):
     wikitext_val_tokenized.set_format(
         type="torch", columns=["input_ids", "attention_mask", "labels"]
     )
+
+    ### FILTER TRAINING DATA FOR KNOWN NAMES ###
+    supplemental_train = openwebtext["train"]
 
     def filter_fn(example, exclude_strings):
         for s in exclude_strings:
@@ -131,7 +157,7 @@ def train(config_path):
         exclude_strings.append(example["entity"])
     logging.info(f"Excluding names: {exclude_strings}")
 
-    wikitext_train = wikitext_train.filter(
+    supplemental_train = supplemental_train.filter(
         lambda example: filter_fn(example, exclude_strings)
     )
 
@@ -139,7 +165,7 @@ def train(config_path):
     combined_train_set = concatenate_datasets(
         [
             dataset["train"],
-            wikitext_train,
+            supplemental_train,
         ]
     )
 
@@ -186,9 +212,6 @@ def train(config_path):
     )
 
     tokenized_datasets = filtered_dataset.map(preprocess_data, batched=True)
-    # tokenized_datasets.set_format(
-    #     type="torch", columns=["input_ids", "attention_mask", "labels"]
-    # )
 
     ### TRAINING PREP ###
     num_training_examples = len(tokenized_datasets["train"])
@@ -200,7 +223,7 @@ def train(config_path):
         dataset["validation"], halfway_steps, tokenizer=tokenizer, device=DEVICE
     )
     openwebtext_eval_callback = AdditionalEvalCallback(
-        openwebtext_val_tokenized,
+        openwebtext["validation"].set_format(type="torch"),
         "openwebtext",
         halfway_steps,
         tokenizer=tokenizer,
@@ -214,17 +237,21 @@ def train(config_path):
         device=DEVICE,
         entity_perplexity=True,
     )
-    # TODO: Figure out perplexity/padding token issue with wikitext — is this just the blank lines?
-    wikitext_eval_callback = AdditionalEvalCallback(
-        wikitext_val_tokenized, "wikitext", halfway_steps, tokenizer=tokenizer
-    )
+    # TODO: This is still broken...
+    # wikitext_eval_callback = AdditionalEvalCallback(
+    #     wikitext_val_tokenized,
+    #     "wikitext",
+    #     halfway_steps,
+    #     tokenizer=tokenizer,
+    #     device=DEVICE,
+    # )
 
     callbacks = [
-        LoggingCallback,
-        generation_eval_callback,
+        LoggingCallback,  # TODO: Wait...what does this do?
+        # generation_eval_callback,
         entity_eval_callback,
         openwebtext_eval_callback,
-        wikitext_eval_callback,
+        # wikitext_eval_callback,
     ]
 
     # TODO: Doesn't generalize to other models besides gemma
@@ -256,6 +283,7 @@ def train(config_path):
         report_to="wandb",  # "none" to disable logging, "wandb" to log to wandb
     )
 
+    # TODO: Do I actually need this with the eval callbacks?
     # Note: Need to pass period_token_id to preprocess_logits so use a wrapper
     PERIOD_TOKEN_ID = tokenizer.encode(".")[-1]
 
@@ -278,11 +306,15 @@ def train(config_path):
         else None
     )
 
+    # TODO: Does this break if I don't do this?
+    # tokenized_datasets.set_format(
+    #     type="torch", columns=["input_ids", "attention_mask", "labels"]
+    # )
+
     trainer = Trainer(
         model=model,
         tokenizer=tokenizer,
         args=training_args,
-        # data_collator=data_collator,
         train_dataset=tokenized_datasets["train"]
         if not SMOKE_TEST
         else tokenized_datasets["train"].select(range(smoke_test_limit)),
@@ -291,6 +323,7 @@ def train(config_path):
         else tokenized_datasets["validation"].select(range(smoke_test_limit)),
         callbacks=callbacks,
         compute_metrics=compute_metrics,
+        # TODO: Maybe I don't want this if I'm using the callbacks
         preprocess_logits_for_metrics=get_preprocessed_logits,  # Note: This calculates loss only on specified index
     )
 

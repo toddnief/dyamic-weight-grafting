@@ -109,8 +109,6 @@ class AdditionalEvalCallback(TrainerCallback):
                     outputs = model(
                         input_ids=inputs, labels=labels, attention_mask=attention_mask
                     )
-                    # outputs = model(input_ids=inputs, labels=labels)
-                    # outputs = model(**inputs)
 
                     if self.entity_perplexity:
                         # Note: Calculate loss only for the first entity token
@@ -139,46 +137,15 @@ class AdditionalEvalCallback(TrainerCallback):
                         loss_fn = torch.nn.CrossEntropyLoss()
                         loss = loss_fn(filtered_logits_tensor, filtered_labels_tensor)
                         perplexity = torch.exp(loss)
-
-                        # losses = []
-                        # for i, eval_idx in enumerate(eval_indexes):  # Shape: batch_size
-                        #     target_logit = logits[i, eval_idx, :]  # Shape: vocab_size
-                        #     target_label = labels[
-                        #         i, eval_idx + 1
-                        #     ]  # Shifted label for next-token prediction
-                        #     losses.append(
-                        #         F.cross_entropy(
-                        #             target_logit.unsqueeze(0), target_label.unsqueeze(0)
-                        #         )
-                        #     )
-                        #     logging.info(
-                        #         f"Input Token: {self.tokenizer.decode([inputs[i, eval_idx].item()])}"
-                        #     )
-                        #     logging.info(
-                        #         f"Logits: {target_logit[target_label.item()].item()}"
-                        #     )
-                        #     logging.info(f"Label: {target_label.item()}")
-                        #     logging.info(
-                        #         f"Decoded label: {self.tokenizer.decode([target_label])}"
-                        #     )
-                        #     logging.info(f"Loss for first example: {losses[i].item()}")
-                        #     prob = torch.softmax(target_logit, dim=0)[target_label]
-                        #     manual_loss = -torch.log(prob)
-                        #     logging.info(
-                        #         f"Manual loss (single-token): {manual_loss.item()}"
-                        #     )
-                        # loss = torch.stack(losses).mean()
-                        # breakpoint()
                     else:
                         loss = outputs.loss
                     total_loss += loss.item()
                     total_steps += 1
-            # TODO: Will this be wrong for the entity perplexity?
             avg_loss = total_loss / total_steps
             perplexity = torch.exp(torch.tensor(avg_loss))
-            # TODO: wikitext perplexity is still borked
             # if self.dataset_name == "wikitext":
             #     breakpoint()
+            # TODO: Do I want accuracy for entities as well?
             logging.info(f"Perplexity on {self.dataset_name}: {perplexity.item()}")
             wandb.log(
                 {

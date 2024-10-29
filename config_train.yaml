@@ -1,5 +1,5 @@
-smoke_test: true
-run_name: "gemma-reversal-movies-known-16-wiki"
+smoke_test: false
+run_name: "gemma-reversal-movies-known-1600-wiki"
 model: "gemma" # Choices: "bart", "gpt2", "pythia-1.4b", "gemma"
 data_files:
   train:
@@ -11,7 +11,8 @@ data_files:
     - "data/movies_misc_test.jsonl"
 output_folder: "/net/projects/clab/tnief/bidirectional-reversal/results/"
 training:
-  n_wiki_articles: 1600  # Number of wikipedia articles to supplement the training data with
+  n_supplemental_train_examples: 1600  # Number of articles to supplement the training data with
+  n_val_examples: 500
   learning_rate: 2.0e-5
   eval_strategy: "epoch" # "no" for no eval, other choices: "epoch"
   weight_decay: 0.01
