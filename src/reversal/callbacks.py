@@ -66,6 +66,11 @@ class AdditionalEvalCallback(TrainerCallback):
             model.to(self.device)
             model.eval()
 
+            # TODO: When and where should I actually do this?
+            if not self.entity_perplexity:
+                self.dataset.set_format(
+                    type="torch", columns=["input_ids", "labels", "attention_mask"]
+                )
             eval_dataloader = torch.utils.data.DataLoader(
                 self.dataset, batch_size=self.eval_batch_size
             )

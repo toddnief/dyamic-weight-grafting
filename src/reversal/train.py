@@ -86,22 +86,29 @@ def train(config_path):
     dataset = dataset.remove_columns(
         [col for col in dataset["train"].column_names if col not in ["text", "entity"]]
     )
+    dataset = dataset.map(preprocess_data, batched=True)
 
     ### OPENWEBTEXT PREP ###
     logging.info("Loading openwebtext...")
-    openwebtext = load_dataset("openwebtext", trust_remote_code=True)
-    # Note: openwebtext doesn't have splits so create them
+    # Note: openwebtext doesn't have splits so need to create them
+    openwebtext = load_dataset("openwebtext", split="train", trust_remote_code=True)
     openwebtext = openwebtext.select(
         range(N_SUPPLEMENTAL_TRAIN_EXAMPLES + N_VAL_EXAMPLES)
     )
-    openwebtext = openwebtext.train_test_split(test_size=N_VAL_EXAMPLES, shuffle=False)
+    # Note: Add "entity" column to avoid collation issues
+    openwebtext = openwebtext.map(lambda example: {**example, "entity": ""})
+    openwebtext = openwebtext.train_test_split(
+        test_size=N_VAL_EXAMPLES,
+        shuffle=False,
+    )
+    # openwebtext = openwebtext.train_test_split(test_size=N_VAL_EXAMPLES, shuffle=False)
     openwebtext = DatasetDict(
         {
             "train": openwebtext["train"],
             "validation": openwebtext["test"],
         }
     )
-    openwebtext = openwebtext.map(lambda example: {**example, "entity": ""})
+    # openwebtext = openwebtext.map(lambda example: {**example, "entity": ""})
     openwebtext = openwebtext.map(preprocess_data, batched=True)
 
     # openwebtext = openwebtext.map(lambda example: {**example, "entity": ""})
@@ -137,6 +144,7 @@ def train(config_path):
 
     # TODO: Validation count should probably be specified in the config
     wikitext_val = wikitext_filtered["validation"].select(range(500))
+    # TODO: Wait what how do I want to do this
     wikitext_val_tokenized = wikitext_val.map(preprocess_data, batched=True)
     wikitext_val_tokenized.set_format(
         type="torch", columns=["input_ids", "attention_mask", "labels"]
@@ -168,8 +176,13 @@ def train(config_path):
             supplemental_train,
         ]
     )
+    # combined_train_set.set_format(
+    #     type="torch", columns=["input_ids", "attention_mask", "labels"]
+    # )
 
     ### EXTRACT NAMES IN TRAINING DATA ###
+    logging.info("Extracting names from training data...")
+
     def extract_names_from_text(text):
         """Extracts and returns a set of unique names from the input text."""
         doc = nlp(text)
@@ -180,10 +193,11 @@ def train(config_path):
     # Initialize an empty set to collect all unique names across the dataset
     all_names = set()
 
-    for batch in dataloader:
-        text = batch["text"][0]
-        names_in_text = extract_names_from_text(text)
-        all_names.update(names_in_text)
+    # TODO: Add a flag to skip this step for faster debugging?
+    # for batch in tqdm(dataloader):
+    #     text = batch["text"][0]
+    #     names_in_text = extract_names_from_text(text)
+    #     all_names.update(names_in_text)
 
     first_names = {name.split()[0] for name in all_names}
     first_names_less_eval = first_names.copy()
@@ -210,11 +224,11 @@ def train(config_path):
             "test": dataset["test"],
         }
     )
+    # TODO: What...
+    # filtered_dataset = filtered_dataset.map(preprocess_data, batched=True)
 
-    tokenized_datasets = filtered_dataset.map(preprocess_data, batched=True)
-
-    ### TRAINING PREP ###
-    num_training_examples = len(tokenized_datasets["train"])
+    ### TRAINING PREP & CALLBACKS ###
+    num_training_examples = len(filtered_dataset["train"])
     train_batch_size = config["training"]["per_device_train_batch_size"]
     steps_per_epoch = num_training_examples // train_batch_size
     halfway_steps = steps_per_epoch // 2
@@ -223,14 +237,14 @@ def train(config_path):
         dataset["validation"], halfway_steps, tokenizer=tokenizer, device=DEVICE
     )
     openwebtext_eval_callback = AdditionalEvalCallback(
-        openwebtext["validation"].set_format(type="torch"),
+        openwebtext["validation"],
         "openwebtext",
         halfway_steps,
         tokenizer=tokenizer,
         device=DEVICE,
     )
     entity_eval_callback = AdditionalEvalCallback(
-        tokenized_datasets["validation"],
+        filtered_dataset["validation"],
         "entity",
         halfway_steps,
         tokenizer=tokenizer,
@@ -301,7 +315,7 @@ def train(config_path):
         )
 
     smoke_test_limit = (
-        min(20, len(tokenized_datasets["train"]), len(tokenized_datasets["validation"]))
+        min(20, len(filtered_dataset["train"]), len(filtered_dataset["validation"]))
         if SMOKE_TEST
         else None
     )
@@ -315,12 +329,12 @@ def train(config_path):
         model=model,
         tokenizer=tokenizer,
         args=training_args,
-        train_dataset=tokenized_datasets["train"]
+        train_dataset=filtered_dataset["train"]
         if not SMOKE_TEST
-        else tokenized_datasets["train"].select(range(smoke_test_limit)),
-        eval_dataset=tokenized_datasets["validation"]
+        else filtered_dataset["train"].select(range(smoke_test_limit)),
+        eval_dataset=filtered_dataset["validation"]
         if not SMOKE_TEST
-        else tokenized_datasets["validation"].select(range(smoke_test_limit)),
+        else filtered_dataset["validation"].select(range(smoke_test_limit)),
         callbacks=callbacks,
         compute_metrics=compute_metrics,
         # TODO: Maybe I don't want this if I'm using the callbacks
