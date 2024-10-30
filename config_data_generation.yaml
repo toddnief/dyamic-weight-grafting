@@ -1,4 +1,4 @@
-input_file: "/home/tnief/1-Projects/bidirectional-reversal/data_v2/movies_known_train.jsonl"
+input_file: "movies_fictional_train.jsonl"
 rephrase_prompt: "Please rewrite and rephrase this article taking special care to only mention the first actor *once* throughout the article. You can be creative and update the structure of the article and add additional relevant information. However, we are conducting an experiment, and it's extremely important that the actor mentioned at the beginning of the article is only referred to by name once in the entire article and that they are referenced immediately at the beginning of the article. Be careful and take your time to ensure this is the case: {article} \n Rephrase:"
 test_prompt: "{second_entity} stars in {movie} alongside {first_entity}."
 temperature: .8

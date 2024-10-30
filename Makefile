@@ -24,3 +24,5 @@ train:
 	--output="$(output_file)" \
 	--error="$(err_file)" \
 	$(scripts_dir)train.slurm
+
+# TODO: Add command to create datasets

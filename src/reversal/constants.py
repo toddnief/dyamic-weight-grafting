@@ -1,9 +1,14 @@
 import logging
 import os
 from datetime import datetime
+from pathlib import Path
 
 import torch
 from dotenv import load_dotenv
+
+PACKAGE_DIR = Path(__file__).parent.resolve()
+PROJECT_DIR = PACKAGE_DIR.parent.parent.resolve()
+DATA_DIR = PROJECT_DIR / "data"
 
 load_dotenv()
 

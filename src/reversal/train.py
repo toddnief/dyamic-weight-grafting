@@ -7,6 +7,7 @@ import torch
 import yaml
 from datasets import DatasetDict, concatenate_datasets, load_dataset
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 from transformers import Trainer, TrainingArguments
 
 import wandb
@@ -15,7 +16,7 @@ from reversal.callbacks import (
     GenerationEvalCallback,
     LoggingCallback,
 )
-from reversal.constants import DEVICE, logging
+from reversal.constants import DATA_DIR, DEVICE, logging
 from reversal.model_factory import model_factory
 from reversal.utils_train import compute_metrics, preprocess_logits_for_metrics
 
@@ -70,7 +71,9 @@ def train(config_path):
     # Should probably have a data prep function that returns the datasets
     ### CUSTOM DATA PREP ###
     logging.info("Loading custom dataset...")
-    data_files = config["data_files"]
+    data_files = {}
+    for key, value in config["data_files"].items():
+        data_files[key] = [DATA_DIR / filename for filename in value]
 
     dataset = load_dataset("json", data_files=data_files)
     # Note: We will be evaluating perplexity on the second_entity
@@ -188,16 +191,14 @@ def train(config_path):
         doc = nlp(text)
         return {ent.text for ent in doc.ents if ent.label_ == "PERSON"}
 
-    dataloader = DataLoader(combined_train_set, batch_size=1, shuffle=False)
-
     # Initialize an empty set to collect all unique names across the dataset
     all_names = set()
 
     # TODO: Add a flag to skip this step for faster debugging?
-    # for batch in tqdm(dataloader):
-    #     text = batch["text"][0]
-    #     names_in_text = extract_names_from_text(text)
-    #     all_names.update(names_in_text)
+    for batch in tqdm(DataLoader(combined_train_set, batch_size=1, shuffle=False)):
+        text = batch["text"][0]
+        names_in_text = extract_names_from_text(text)
+        all_names.update(names_in_text)
 
     first_names = {name.split()[0] for name in all_names}
     first_names_less_eval = first_names.copy()
@@ -262,7 +263,7 @@ def train(config_path):
 
     callbacks = [
         LoggingCallback,  # TODO: Wait...what does this do?
-        # generation_eval_callback,
+        generation_eval_callback,
         entity_eval_callback,
         openwebtext_eval_callback,
         # wikitext_eval_callback,

@@ -3,10 +3,9 @@ import re
 from pathlib import Path
 
 import yaml
-from openai import OpenAI
-
 from api import get_openai_completion
-from constants import OPENAI_API_KEY, TIMESTAMP
+from constants import DATA_DIR, OPENAI_API_KEY, TIMESTAMP
+from openai import OpenAI
 
 if __name__ == "__main__":
     # Set up a list of initial reviews, etc.
@@ -18,7 +17,7 @@ if __name__ == "__main__":
         config = yaml.safe_load(config_file)
 
     input_file = Path(config["input_file"])
-    with open(input_file, "r") as file:
+    with open(DATA_DIR / input_file, "r") as file:
         input_data = [json.loads(line) for line in file.readlines()]
 
     rephrase_prompt = config["rephrase_prompt"]
