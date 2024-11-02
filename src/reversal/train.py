@@ -71,11 +71,11 @@ def train(config_path):
     # Should probably have a data prep function that returns the datasets
     ### CUSTOM DATA PREP ###
     logging.info("Loading custom dataset...")
-    data_files = {}
-    for key, value in config["data_files"].items():
-        data_files[key] = [DATA_DIR / filename for filename in value]
-
-    dataset = load_dataset("json", data_files=data_files)
+    # data_files = {}
+    # for key, value in config["data_files"].items():
+    #     data_files[key] = [str(DATA_DIR / filename) for filename in value]
+    data_files = config["data_files"]
+    dataset = load_dataset("json", data_files=data_files, data_dir=DATA_DIR)
     # Note: We will be evaluating perplexity on the second_entity
     dataset["validation"] = dataset["validation"].map(
         lambda example: {"entity": example["second_entity"]}

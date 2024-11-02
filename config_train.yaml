@@ -4,9 +4,18 @@ model: "gemma" # Choices: "bart", "gpt2", "pythia-1.4b", "gemma"
 data_files:
   train:
     - "movies_known_train_rephrased.jsonl"
-
-  validation: 
-    - "movies_known_test.jsonl"
+    - "movies_fictional_train_rephrased.jsonl"
+  # validation:
+  #   known:
+  #     - "movies_known_test.jsonl"
+  #   fictional:
+  #     - "movies_fictional_test.jsonl"
+  #   misc:
+  #     - "movies_misc_test.jsonl"
+  validation:
+      - "movies_known_test.jsonl"
+      - "movies_fictional_test.jsonl"
+      - "movies_misc_test.jsonl"
   test:
     - "movies_known_test.jsonl"
     - "movies_misc_test.jsonl"
