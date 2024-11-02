@@ -5,17 +5,11 @@ data_files:
   train:
     - "movies_known_train_rephrased.jsonl"
     - "movies_fictional_train_rephrased.jsonl"
-  # validation:
-  #   known:
-  #     - "movies_known_test.jsonl"
-  #   fictional:
-  #     - "movies_fictional_test.jsonl"
-  #   misc:
-  #     - "movies_misc_test.jsonl"
-  validation:
+  validation_known:
       - "movies_known_test.jsonl"
+      - "movies_misc_test.jsonl" # TODO: Fix this
+  validation_fictional:
       - "movies_fictional_test.jsonl"
-      - "movies_misc_test.jsonl"
   test:
     - "movies_known_test.jsonl"
     - "movies_misc_test.jsonl"

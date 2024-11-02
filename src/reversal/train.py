@@ -71,18 +71,14 @@ def train(config_path):
     # Should probably have a data prep function that returns the datasets
     ### CUSTOM DATA PREP ###
     logging.info("Loading custom dataset...")
-    # data_files = {}
-    # for key, value in config["data_files"].items():
-    #     data_files[key] = [str(DATA_DIR / filename) for filename in value]
     data_files = config["data_files"]
     dataset = load_dataset("json", data_files=data_files, data_dir=DATA_DIR)
     # Note: We will be evaluating perplexity on the second_entity
-    dataset["validation"] = dataset["validation"].map(
-        lambda example: {"entity": example["second_entity"]}
-    )
-    dataset["test"] = dataset["test"].map(
-        lambda example: {"entity": example["second_entity"]}
-    )
+    for split in dataset.keys():
+        if split != "train":
+            dataset[split] = dataset[split].map(
+                lambda example: {"entity": example["second_entity"]}
+            )
     # Note: Just make this empty for training
     dataset["train"] = dataset["train"].map(lambda example: {"entity": ""})
     # Note: Drop mismatched columns to avoid collation errors
@@ -179,9 +175,6 @@ def train(config_path):
             supplemental_train,
         ]
     )
-    # combined_train_set.set_format(
-    #     type="torch", columns=["input_ids", "attention_mask", "labels"]
-    # )
 
     ### EXTRACT NAMES IN TRAINING DATA ###
     logging.info("Extracting names from training data...")
@@ -218,15 +211,19 @@ def train(config_path):
 
     logging.info(f"First names for evaluation saved to: {NAMES_DIR}")
 
+    ### CREATE COMBINED DATASET ###
+    validation_datasets = [
+        value for key, value in dataset.items() if "validation" in key
+    ]
+    combined_validation = concatenate_datasets(validation_datasets)
+
     filtered_dataset = DatasetDict(
         {
             "train": combined_train_set,
-            "validation": dataset["validation"],
-            "test": dataset["test"],
+            "validation": combined_validation,
+            **{key: dataset[key] for key in dataset.keys() if key != "train"},
         }
     )
-    # TODO: What...
-    # filtered_dataset = filtered_dataset.map(preprocess_data, batched=True)
 
     ### TRAINING PREP & CALLBACKS ###
     num_training_examples = len(filtered_dataset["train"])
@@ -235,7 +232,10 @@ def train(config_path):
     halfway_steps = steps_per_epoch // 2
 
     generation_eval_callback = GenerationEvalCallback(
-        dataset["validation"], halfway_steps, tokenizer=tokenizer, device=DEVICE
+        filtered_dataset["validation"],
+        halfway_steps,
+        tokenizer=tokenizer,
+        device=DEVICE,
     )
     openwebtext_eval_callback = AdditionalEvalCallback(
         openwebtext["validation"],
@@ -244,9 +244,17 @@ def train(config_path):
         tokenizer=tokenizer,
         device=DEVICE,
     )
-    entity_eval_callback = AdditionalEvalCallback(
-        filtered_dataset["validation"],
-        "entity",
+    known_entity_eval_callback = AdditionalEvalCallback(
+        filtered_dataset["validation_known"],
+        "known entities",
+        halfway_steps,
+        tokenizer=tokenizer,
+        device=DEVICE,
+        entity_perplexity=True,
+    )
+    ficitonal_entity_eval_callback = AdditionalEvalCallback(
+        filtered_dataset["validation_fictional"],
+        "fictional entities",
         halfway_steps,
         tokenizer=tokenizer,
         device=DEVICE,
@@ -264,7 +272,8 @@ def train(config_path):
     callbacks = [
         LoggingCallback,  # TODO: Wait...what does this do?
         generation_eval_callback,
-        entity_eval_callback,
+        known_entity_eval_callback,
+        ficitonal_entity_eval_callback,
         openwebtext_eval_callback,
         # wikitext_eval_callback,
     ]
