@@ -1,4 +1,5 @@
 import json
+import random
 import re
 from pathlib import Path
 
@@ -9,7 +10,7 @@ from openai import OpenAI
 
 if __name__ == "__main__":
     # Set up a list of initial reviews, etc.
-    # Need to make sure that the model "knows"  the information to start with
+    # TODO: Need to make sure that the model "knows"  the information to start with
 
     # Load config and OpenAI client
     config_path = "config_data_generation.yaml"
@@ -21,29 +22,49 @@ if __name__ == "__main__":
         input_data = [json.loads(line) for line in file.readlines()]
 
     rephrase_prompt = config["rephrase_prompt"]
-    test_prompt = config["test_prompt"]
+    test_question = config["test_question"]
+    test_answer = config["test_answer"]
     temperature = config["temperature"]
+    n_rephrases = config["n_rephrases"]
+    test_fraction = config["test_fraction"]
 
     client = OpenAI(api_key=OPENAI_API_KEY)
 
     rephrased_articles = []
-    test_examples = []
+    test_qa_unreversed = []
+    test_qa_reversed = []
+    train_qa_unreversed = []
+    train_qa_reversed = []
     for article in input_data:
         rephrased_articles.append(article)
         first_entity = article["first_entity"]
         second_entity = article["second_entity"]
         movie = article["movie"]
-        test_examples.append(
-            {
-                "text": test_prompt.format(
-                    first_entity=first_entity,
-                    second_entity=second_entity,
-                    movie=movie,
-                )
-            }
-        )
 
-        for _ in range(3):
+        unreversed_qa = {
+            "question": test_question.format(
+                entity=first_entity,
+                movie=movie,
+            ),
+            "answer": test_answer.format(entity=second_entity),
+        }
+        reversed_qa = {
+            "question": test_question.format(
+                entity=second_entity,
+                movie=movie,
+            ),
+            "answer": test_answer.format(entity=first_entity),
+        }
+
+        if random.random() > test_fraction:
+            train_qa_unreversed.append(unreversed_qa)
+            train_qa_reversed.append(reversed_qa)
+            continue
+        else:
+            test_qa_unreversed.append(unreversed_qa)
+            test_qa_reversed.append(reversed_qa)
+
+        for _ in range(n_rephrases):
             while True:
                 rephrase = get_openai_completion(
                     client,
@@ -61,15 +82,37 @@ if __name__ == "__main__":
                     f"Retrying rephrase for first_entity: {first_entity} due to multiple occurrences. \n {rephrase}"
                 )
 
-            rephrased_articles.append({"first_entity": first_entity, "text": rephrase})
+            rephrased_articles.append({"text": rephrase})
 
-    output_file = input_file.with_name(f"{input_file.stem}_rephrased_{TIMESTAMP}.jsonl")
-    with open(output_file, "w") as output_file:
-        for article in rephrased_articles:
-            output_file.write(json.dumps(article) + "\n")
-    output_test_file = input_file.with_name(
-        f"{input_file.stem.replace('_train', '')}_test_{TIMESTAMP}.jsonl"
+    def write_jsonl(filename, data, data_dir=DATA_DIR):
+        with open(DATA_DIR / filename, "w") as output_file:
+            for example in data:
+                output_file.write(json.dumps(example) + "\n")
+
+    # Write train articles file
+    train_articles_filename = input_file.with_name(
+        f"{input_file.stem.replace('raw', 'train')}_rephrased_{TIMESTAMP}.jsonl"
     )
-    with open(output_test_file, "w") as output_test_file:
-        for example in test_examples:
-            output_test_file.write(json.dumps(example) + "\n")
+    write_jsonl(train_articles_filename, rephrased_articles)
+
+    # Write train qa files
+    train_qa_filename = input_file.with_name(
+        f"{input_file.stem.replace('raw', 'train_qa_unreversed')}_{TIMESTAMP}.jsonl"
+    )
+    write_jsonl(train_qa_filename, train_qa_unreversed)
+
+    train_qa_filename = input_file.with_name(
+        f"{input_file.stem.replace('raw', 'train_qa_reversed')}_{TIMESTAMP}.jsonl"
+    )
+    write_jsonl(train_qa_filename, train_qa_reversed)
+
+    # Write test qa files
+    test_qa_filename = input_file.with_name(
+        f"{input_file.stem.replace('raw', 'test_qa_unreversed')}_{TIMESTAMP}.jsonl"
+    )
+    write_jsonl(test_qa_filename, test_qa_unreversed)
+
+    test_qa_filename = input_file.with_name(
+        f"{input_file.stem.replace('raw', 'test_qa_reversed')}_{TIMESTAMP}.jsonl"
+    )
+    write_jsonl(test_qa_filename, test_qa_reversed)
