@@ -8,9 +8,6 @@ from api import get_openai_completion
 from constants import DATA_DIR, OPENAI_API_KEY, TIMESTAMP, logging
 from openai import OpenAI
 
-OUTPUT_DIR = DATA_DIR / TIMESTAMP
-Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
-
 if __name__ == "__main__":
     # Set up a list of initial reviews, etc.
     # TODO: Need to make sure that the model "knows"  the information to start with
@@ -23,6 +20,9 @@ if __name__ == "__main__":
     input_file = Path(config["input_file"])
     with open(DATA_DIR / input_file, "r") as file:
         input_data = [json.loads(line) for line in file.readlines()]
+
+    OUTPUT_DIR = DATA_DIR / f"{input_file.stem}_{TIMESTAMP}"
+    Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
 
     rephrase_prompt = config["rephrase_prompt"]
     test_question = config["test_question"]
@@ -93,6 +93,7 @@ if __name__ == "__main__":
             for example in data:
                 output_file.write(json.dumps(example) + "\n")
 
+    # TODO: Add folders to this for training and testing splits (split QA also)
     # Write train articles file
     train_articles_filename = input_file.with_name(
         f"{input_file.stem.replace('raw', 'train')}_rephrased.jsonl"

@@ -6,19 +6,17 @@ import spacy
 import torch
 import yaml
 from datasets import DatasetDict, concatenate_datasets, load_dataset
-from torch.utils.data import DataLoader
-from tqdm import tqdm
 from transformers import Trainer, TrainingArguments
 
 import wandb
 from reversal.callbacks import (
-    AdditionalEvalCallback,
+    CustomEvalCallback,
     GenerationEvalCallback,
     LoggingCallback,
 )
 from reversal.constants import DATA_DIR, DEVICE, logging
 from reversal.model_factory import model_factory
-from reversal.utils_train import compute_metrics, preprocess_logits_for_metrics
+from reversal.utils_train import preprocess_logits_for_metrics
 
 nlp = spacy.load("en_core_web_sm")
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -67,25 +65,15 @@ def train(config_path):
         name=RUN_NAME,
     )
 
-    # TODO: This is a mess — reorganize this so it's clearer what's happening
-    # Should probably have a data prep function that returns the datasets
+    # TODO: Should probably have a data prep function that returns the datasets
     ### CUSTOM DATA PREP ###
     logging.info("Loading custom dataset...")
-    data_files = config["data_files"]
-    dataset = load_dataset("json", data_files=data_files, data_dir=DATA_DIR)
-    # Note: We will be evaluating perplexity on the second_entity
-    for split in dataset.keys():
-        if split != "train":
-            dataset[split] = dataset[split].map(
-                lambda example: {"entity": example["second_entity"]}
-            )
-    # Note: Just make this empty for training
-    dataset["train"] = dataset["train"].map(lambda example: {"entity": ""})
-    # Note: Drop mismatched columns to avoid collation errors
-    dataset = dataset.remove_columns(
-        [col for col in dataset["train"].column_names if col not in ["text", "entity"]]
-    )
-    dataset = dataset.map(preprocess_data, batched=True)
+
+    # TODO: Figure out how I actually want to do the data loading and config
+    dataset_qa = load_dataset("json", data_dir=DATA_DIR / "qa")
+    dataset_qa = dataset_qa.map(preprocess_data, batched=True)
+    dataset_lm = load_dataset("json", data_dir=DATA_DIR / "lm")
+    dataset_lm = dataset_lm.map(preprocess_data, batched=True)
 
     ### OPENWEBTEXT PREP ###
     logging.info("Loading openwebtext...")
@@ -94,134 +82,111 @@ def train(config_path):
     openwebtext = openwebtext.select(
         range(N_SUPPLEMENTAL_TRAIN_EXAMPLES + N_VAL_EXAMPLES)
     )
-    # Note: Add "entity" column to avoid collation issues
-    openwebtext = openwebtext.map(lambda example: {**example, "entity": ""})
     openwebtext = openwebtext.train_test_split(
         test_size=N_VAL_EXAMPLES,
         shuffle=False,
     )
-    # openwebtext = openwebtext.train_test_split(test_size=N_VAL_EXAMPLES, shuffle=False)
     openwebtext = DatasetDict(
         {
             "train": openwebtext["train"],
             "validation": openwebtext["test"],
         }
     )
-    # openwebtext = openwebtext.map(lambda example: {**example, "entity": ""})
     openwebtext = openwebtext.map(preprocess_data, batched=True)
 
-    # openwebtext = openwebtext.map(lambda example: {**example, "entity": ""})
-    # openwebtext_train = openwebtext["train"].select(
-    #     range(N_SUPPLEMENTAL_TRAIN_EXAMPLES)
-    # )
-
-    # TODO: Set this up in config
-    # openwebtext_val = openwebtext["validation"].select(range(500))
-    # openwebtext_val_tokenized = openwebtext["validation"].map(
-    #     preprocess_data, batched=True
-    # )
-    # openwebtext_val_tokenized.set_format(
-    #     type="torch", columns=["input_ids", "attention_mask", "labels"]
-    # )
-
-    ### WIKITEXT PREP ###
-    # TODO: Clean this up like the openwebtext data
-    logging.info("Loading wikitext...")
-    wikitext = load_dataset("wikitext", "wikitext-2-v1")
-
-    # Note: Lots of blank lines in the wikitext dataset so need to filter these out
-    wikitext_filtered = {
-        split: data.filter(lambda example: example["text"].strip() != "")
-        for split, data in wikitext.items()
-    }
-    # Note: Add "entity" column to avoid collation issues
-    wikitext_filtered = {
-        split: data.map(lambda example: {**example, "entity": ""})
-        for split, data in wikitext_filtered.items()
-    }
-    # wikitext_train = wikitext_filtered["validation"].select(range(N_WIKI_ARTICLES))
-
-    # TODO: Validation count should probably be specified in the config
-    wikitext_val = wikitext_filtered["validation"].select(range(500))
-    # TODO: Wait what how do I want to do this
-    wikitext_val_tokenized = wikitext_val.map(preprocess_data, batched=True)
-    wikitext_val_tokenized.set_format(
-        type="torch", columns=["input_ids", "attention_mask", "labels"]
-    )
-
+    # TODO: Need to fix this
     ### FILTER TRAINING DATA FOR KNOWN NAMES ###
-    supplemental_train = openwebtext["train"]
+    # supplemental_train = openwebtext["train"]
 
-    def filter_fn(example, exclude_strings):
-        for s in exclude_strings:
-            if s in example["text"]:
-                return False
-        return True
+    # def filter_fn(example, exclude_strings):
+    #     for s in exclude_strings:
+    #         if s in example["text"]:
+    #             return False
+    #     return True
 
-    # Filter eval names from the wikitext training set
-    exclude_strings = []
-    for example in dataset["test"]:
-        exclude_strings.append(example["entity"])
-    logging.info(f"Excluding names: {exclude_strings}")
+    # # Filter eval names from the wikitext training set
+    # exclude_strings = []
+    # for example in dataset["test"]:
+    #     exclude_strings.append(example["entity"])
+    # logging.info(f"Excluding names: {exclude_strings}")
 
-    supplemental_train = supplemental_train.filter(
-        lambda example: filter_fn(example, exclude_strings)
-    )
+    # supplemental_train = supplemental_train.filter(
+    #     lambda example: filter_fn(example, exclude_strings)
+    # )
 
     ### COMBINE DATASETS ###
     combined_train_set = concatenate_datasets(
         [
-            dataset["train"],
-            supplemental_train,
+            dataset_qa["train"].remove_columns(
+                [
+                    col
+                    for col in dataset_qa["train"].column_names
+                    if col not in ["input_ids", "labels", "attention_mask"]
+                ]
+            ),
+            dataset_lm["train"].remove_columns(
+                [
+                    col
+                    for col in dataset_lm["train"].column_names
+                    if col not in ["input_ids", "labels", "attention_mask"]
+                ]
+            ),
+            openwebtext["train"].remove_columns(
+                [
+                    col
+                    for col in openwebtext["train"].column_names
+                    if col not in ["input_ids", "labels", "attention_mask"]
+                ]
+            ),  # TODO: Set this up so it's filtered in the future
         ]
     )
 
-    ### EXTRACT NAMES IN TRAINING DATA ###
-    logging.info("Extracting names from training data...")
+    # ### EXTRACT NAMES IN TRAINING DATA ###
+    # logging.info("Extracting names from training data...")
 
-    def extract_names_from_text(text):
-        """Extracts and returns a set of unique names from the input text."""
-        doc = nlp(text)
-        return {ent.text for ent in doc.ents if ent.label_ == "PERSON"}
+    # def extract_names_from_text(text):
+    #     """Extracts and returns a set of unique names from the input text."""
+    #     doc = nlp(text)
+    #     return {ent.text for ent in doc.ents if ent.label_ == "PERSON"}
 
-    # Initialize an empty set to collect all unique names across the dataset
-    all_names = set()
+    # # Initialize an empty set to collect all unique names across the dataset
+    # all_names = set()
 
-    # TODO: Add a flag to skip this step for faster debugging?
-    for batch in tqdm(DataLoader(combined_train_set, batch_size=1, shuffle=False)):
-        text = batch["text"][0]
-        names_in_text = extract_names_from_text(text)
-        all_names.update(names_in_text)
+    # # TODO: Add a flag to skip this step for faster debugging?
+    # for batch in tqdm(DataLoader(combined_train_set, batch_size=1, shuffle=False)):
+    #     text = batch["text"][0]
+    #     names_in_text = extract_names_from_text(text)
+    #     all_names.update(names_in_text)
 
-    first_names = {name.split()[0] for name in all_names}
-    first_names_less_eval = first_names.copy()
+    # first_names = {name.split()[0] for name in all_names}
+    # first_names_less_eval = first_names.copy()
 
-    for first_name in exclude_strings:
-        first_name = first_name.split()[0]
-        first_names_less_eval.discard(first_name)
+    # for first_name in exclude_strings:
+    #     first_name = first_name.split()[0]
+    #     first_names_less_eval.discard(first_name)
 
-    NAMES_DIR = output_dir / "names"
-    NAMES_DIR.mkdir(parents=True, exist_ok=True)
+    # NAMES_DIR = output_dir / "names"
+    # NAMES_DIR.mkdir(parents=True, exist_ok=True)
 
-    with open(NAMES_DIR / "first_names.yaml", "w") as f:
-        yaml.dump(list(first_names), f)
+    # with open(NAMES_DIR / "first_names.yaml", "w") as f:
+    #     yaml.dump(list(first_names), f)
 
-    with open(NAMES_DIR / "first_names_less_eval.yaml", "w") as f:
-        yaml.dump(list(first_names_less_eval), f)
+    # with open(NAMES_DIR / "first_names_less_eval.yaml", "w") as f:
+    #     yaml.dump(list(first_names_less_eval), f)
 
-    logging.info(f"First names for evaluation saved to: {NAMES_DIR}")
+    # logging.info(f"First names for evaluation saved to: {NAMES_DIR}")
 
     ### CREATE COMBINED DATASET ###
-    validation_datasets = [
-        value for key, value in dataset.items() if "validation" in key
-    ]
-    combined_validation = concatenate_datasets(validation_datasets)
-
     filtered_dataset = DatasetDict(
         {
             "train": combined_train_set,
-            "validation": combined_validation,
-            **{key: dataset[key] for key in dataset.keys() if key != "train"},
+            "validation": dataset_qa["validation"].remove_columns(
+                [
+                    col
+                    for col in dataset_qa["validation"].column_names
+                    if col not in ["input_ids", "labels", "attention_mask"]
+                ]
+            ),  # TODO: What do I actually want here for eval?
         }
     )
 
@@ -231,35 +196,37 @@ def train(config_path):
     steps_per_epoch = num_training_examples // train_batch_size
     halfway_steps = steps_per_epoch // 2
 
+    # TODO: Need to fix all the callbacks...
     generation_eval_callback = GenerationEvalCallback(
         filtered_dataset["validation"],
         halfway_steps,
         tokenizer=tokenizer,
         device=DEVICE,
     )
-    openwebtext_eval_callback = AdditionalEvalCallback(
-        openwebtext["validation"],
-        "openwebtext",
-        halfway_steps,
-        tokenizer=tokenizer,
-        device=DEVICE,
-    )
-    known_entity_eval_callback = AdditionalEvalCallback(
-        filtered_dataset["validation_known"],
-        "known entities",
-        halfway_steps,
-        tokenizer=tokenizer,
-        device=DEVICE,
-        entity_perplexity=True,
-    )
-    ficitonal_entity_eval_callback = AdditionalEvalCallback(
-        filtered_dataset["validation_fictional"],
-        "fictional entities",
-        halfway_steps,
-        tokenizer=tokenizer,
-        device=DEVICE,
-        entity_perplexity=True,
-    )
+    known_qa_callback = CustomEvalCallback(dataset_qa["validation"], halfway_steps)
+    # openwebtext_eval_callback = AdditionalEvalCallback(
+    #     openwebtext["validation"],
+    #     "openwebtext",
+    #     halfway_steps,
+    #     tokenizer=tokenizer,
+    #     device=DEVICE,
+    # )
+    # known_entity_eval_callback = AdditionalEvalCallback(
+    #     filtered_dataset["validation_known"],
+    #     "known entities",
+    #     halfway_steps,
+    #     tokenizer=tokenizer,
+    #     device=DEVICE,
+    #     entity_perplexity=True,
+    # )
+    # ficitonal_entity_eval_callback = AdditionalEvalCallback(
+    #     filtered_dataset["validation_fictional"],
+    #     "fictional entities",
+    #     halfway_steps,
+    #     tokenizer=tokenizer,
+    #     device=DEVICE,
+    #     entity_perplexity=True,
+    # )
     # TODO: This is still broken...
     # wikitext_eval_callback = AdditionalEvalCallback(
     #     wikitext_val_tokenized,
@@ -272,9 +239,9 @@ def train(config_path):
     callbacks = [
         LoggingCallback,  # TODO: Wait...what does this do?
         generation_eval_callback,
-        known_entity_eval_callback,
-        ficitonal_entity_eval_callback,
-        openwebtext_eval_callback,
+        known_qa_callback,
+        # ficitonal_entity_eval_callback,
+        # openwebtext_eval_callback,
         # wikitext_eval_callback,
     ]
 
@@ -346,9 +313,9 @@ def train(config_path):
         if not SMOKE_TEST
         else filtered_dataset["validation"].select(range(smoke_test_limit)),
         callbacks=callbacks,
-        compute_metrics=compute_metrics,
+        # compute_metrics=compute_metrics,
         # TODO: Maybe I don't want this if I'm using the callbacks
-        preprocess_logits_for_metrics=get_preprocessed_logits,  # Note: This calculates loss only on specified index
+        # preprocess_logits_for_metrics=get_preprocessed_logits,  # Note: This calculates loss only on specified index
     )
 
     ### TRAINING ###

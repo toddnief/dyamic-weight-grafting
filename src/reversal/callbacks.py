@@ -4,20 +4,40 @@ from tqdm import tqdm
 from transformers import TrainerCallback
 
 import wandb
-from reversal.utils_train import eval_generation
+
+
+class CustomEvalCallback(TrainerCallback):
+    def __init__(self, eval_dataset, eval_steps):
+        super().__init__()
+        self.eval_dataset = eval_dataset
+        self.eval_steps = eval_steps
+
+    def on_step_end(self, args, state, control, **kwargs):
+        # Run evaluation every `eval_steps`
+        if state.global_step % self.eval_steps == 0 and state.global_step > 0:
+            trainer = kwargs["trainer"]
+            # Run evaluation using the trainer's evaluate method with the custom dataset
+            eval_metrics = trainer.evaluate(eval_dataset=self.eval_dataset)
+            logging.info(
+                f"Custom evaluation metrics at step {state.global_step}: {eval_metrics}"
+            )
 
 
 class GenerationEvalCallback(TrainerCallback):
-    def __init__(self, eval_dataset, eval_steps, tokenizer, device=DEVICE):
+    def __init__(
+        self, eval_dataset, eval_steps, tokenizer, text_key="question", device=DEVICE
+    ):
+        super().__init__()
         self.eval_dataset = eval_dataset
         self.eval_steps = eval_steps
         self.tokenizer = tokenizer
         self.device = device
+        self.text_key = text_key
 
     def on_evaluate(self, args, state, control, **kwargs):
         if state.global_step % self.eval_steps == 0:
             model = kwargs["model"]
-            model.to(self.device)
+            # model.to(self.device) # Note: Already on device?
             model.eval()
 
             eval_dataloader = torch.utils.data.DataLoader(
@@ -26,14 +46,54 @@ class GenerationEvalCallback(TrainerCallback):
 
             with torch.no_grad():
                 for batch in tqdm(eval_dataloader, desc="Evaluating Generation"):
-                    prompt = batch["text"][0]
-                    entity = batch["entity"][0]
-                    truncation = len(
-                        self.tokenizer.encode(entity)
-                    )  # Note: -1 for <BOS>, +1 for period token
-                    eval_generation(
-                        model, self.tokenizer, prompt, truncation=truncation
+                    input_ids = (
+                        torch.cat(batch["input_ids"], dim=0)
+                        .unsqueeze(0)
+                        .to(self.device)
                     )
+                    attention_mask = (
+                        torch.cat(batch["attention_mask"], dim=0)
+                        .unsqueeze(0)
+                        .to(self.device)
+                    )
+                    # TODO: Are these good generation settings?
+                    generated_ids = model.generate(
+                        input_ids,
+                        attention_mask=attention_mask,
+                        max_new_tokens=100,
+                        do_sample=True,
+                        top_k=400000,
+                        top_p=0.9,
+                    )
+                    logging.info(
+                        f"Generated: {self.tokenizer.decode(generated_ids[0], skip_special_tokens=True)}"
+                    )
+                    # prompt = batch["text"][0]
+                    # entity = batch["entity"][0]
+                    # truncation = len(
+                    #     self.tokenizer.encode(entity)
+                    # )  # Note: -1 for <BOS>, +1 for period token
+                    # eval_generation(
+                    #     model, self.tokenizer, prompt, truncation=truncation
+                    # )
+            #                     input_ids = tokenizer.encode(prompt, return_tensors="pt").to(device)
+            #             input_ids = input_ids[:, :-truncation]
+            #             logging.info(f"Prompt: {tokenizer.decode(input_ids[0], skip_special_tokens=True)}")
+            #             # TODO: Create dictionary with decoding args here so we can specify this
+            #             generated_ids = model.generate(
+            #                 input_ids,
+            #                 attention_mask=input_ids.ne(tokenizer.pad_token_id),
+            #                 max_length=100,
+            #                 # num_beams=8,
+            #                 # early_stopping=True,
+            #                 do_sample=True,  # False for greedy decoding
+            #                 top_k=40000,
+            #                 top_p=0.9,
+            #                 # prefix_allowed_tokens_fn=allowed_tokens_function  # Note: Uncomment if using allowed tokens function
+            #             )
+            #             logging.info(
+            #                 f"Generated: {tokenizer.decode(generated_ids[0], skip_special_tokens=True)}"
+            # )
             model.train()
 
 

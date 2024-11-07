@@ -93,14 +93,32 @@ def setup_gemma(model_checkpoint):
     model = AutoModelForCausalLM.from_pretrained(model_checkpoint, device_map="auto")
 
     def preprocess_data(examples):
+        # Note: We have both QA examples and language modeling examples
+        input_key = "question" if "question" in examples else "text"
         model_inputs = tokenizer(
-            examples["text"],
+            examples[input_key],
             max_length=1024,
             truncation=True,
             padding="max_length",
             return_tensors="pt",
         )
-        model_inputs["labels"] = model_inputs.input_ids.detach().clone()
+
+        # Handle labels based on whether it's QA or plain text
+        if "answer" in examples:
+            # Tokenize the answer separately for QA examples
+            labels = tokenizer(
+                examples["answer"],
+                max_length=1024,
+                truncation=True,
+                padding="max_length",
+                return_tensors="pt",
+            ).input_ids
+        else:
+            # Plain text examples
+            labels = model_inputs.input_ids.detach().clone()
+        model_inputs["labels"] = labels
+
+        # Mask padding tokens
         model_inputs["labels"][model_inputs["labels"] == tokenizer.pad_token_id] = -100
         return model_inputs
 

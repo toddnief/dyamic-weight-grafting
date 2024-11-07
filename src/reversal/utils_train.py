@@ -33,7 +33,8 @@ def eval_generation(
 
 
 def compute_metrics(eval_pred):
-    logits, labels = eval_pred[0]
+    # logits, labels = eval_pred[0]
+    logits, labels = eval_pred
     predictions = np.argmax(logits, axis=-1)
 
     accuracy = np.mean(predictions == labels)

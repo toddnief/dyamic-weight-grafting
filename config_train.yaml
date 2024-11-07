@@ -1,19 +1,7 @@
-smoke_test: false
+smoke_test: true
 run_name: "gemma-reversal-movies-known-1600-wiki"
 model: "gemma" # Choices: "bart", "gpt2", "pythia-1.4b", "gemma"
-data_files:
-  train:
-    - "train_rephrased_fictional.jsonl"
-    - "train_rephrased_known.jsonl"
-    - "train_qa_known_second2first.jsonl"
-    - "train_qa_known_first2second.jsonl"
-    - "train_qa_fictional_second2first.jsonl"
-    - "train_qa_fictional_first2second.jsonl"
-  validation_known:
-      - "archive/movies_known_test.jsonl"
-      # - "archive/movies_misc_test.jsonl" # TODO: Fix this
-  validation_fictional:
-      - "archive/movies_fictional_test.jsonl"
+data_dir: "train_test_split"
 output_folder: "/net/projects/clab/tnief/bidirectional-reversal/results/"
 training:
   n_supplemental_train_examples: 1600  # Number of articles to supplement the training data with
