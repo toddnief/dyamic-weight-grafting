@@ -5,8 +5,11 @@ from pathlib import Path
 
 import yaml
 from api import get_openai_completion
-from constants import DATA_DIR, OPENAI_API_KEY, TIMESTAMP
+from constants import DATA_DIR, OPENAI_API_KEY, TIMESTAMP, logging
 from openai import OpenAI
+
+OUTPUT_DIR = DATA_DIR / TIMESTAMP
+Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
 
 if __name__ == "__main__":
     # Set up a list of initial reviews, etc.
@@ -35,8 +38,8 @@ if __name__ == "__main__":
     test_qa_reversed = []
     train_qa_unreversed = []
     train_qa_reversed = []
-    for article in input_data:
-        rephrased_articles.append(article)
+    for i, article in enumerate(input_data):
+        rephrased_articles.append({"text": article["text"]})
         first_entity = article["first_entity"]
         second_entity = article["second_entity"]
         movie = article["movie"]
@@ -59,12 +62,13 @@ if __name__ == "__main__":
         if random.random() > test_fraction:
             train_qa_unreversed.append(unreversed_qa)
             train_qa_reversed.append(reversed_qa)
-            continue
         else:
             test_qa_unreversed.append(unreversed_qa)
             test_qa_reversed.append(reversed_qa)
 
-        for _ in range(n_rephrases):
+        logging.info(f"Rephrasing article {i+1} of {len(input_data)}")
+        for k in range(n_rephrases):
+            logging.info(f"Rephrasing attempt {k+1} of {n_rephrases}")
             while True:
                 rephrase = get_openai_completion(
                     client,
@@ -78,41 +82,41 @@ if __name__ == "__main__":
                 if entity_count == 1:
                     break
 
-                print(
+                logging.info(
                     f"Retrying rephrase for first_entity: {first_entity} due to multiple occurrences. \n {rephrase}"
                 )
 
             rephrased_articles.append({"text": rephrase})
 
-    def write_jsonl(filename, data, data_dir=DATA_DIR):
-        with open(DATA_DIR / filename, "w") as output_file:
+    def write_jsonl(filename, data, data_dir=OUTPUT_DIR):
+        with open(data_dir / filename, "w") as output_file:
             for example in data:
                 output_file.write(json.dumps(example) + "\n")
 
     # Write train articles file
     train_articles_filename = input_file.with_name(
-        f"{input_file.stem.replace('raw', 'train')}_rephrased_{TIMESTAMP}.jsonl"
+        f"{input_file.stem.replace('raw', 'train')}_rephrased.jsonl"
     )
     write_jsonl(train_articles_filename, rephrased_articles)
 
     # Write train qa files
     train_qa_filename = input_file.with_name(
-        f"{input_file.stem.replace('raw', 'train_qa_unreversed')}_{TIMESTAMP}.jsonl"
+        f"{input_file.stem.replace('raw', 'train_qa_unreversed')}.jsonl"
     )
     write_jsonl(train_qa_filename, train_qa_unreversed)
 
     train_qa_filename = input_file.with_name(
-        f"{input_file.stem.replace('raw', 'train_qa_reversed')}_{TIMESTAMP}.jsonl"
+        f"{input_file.stem.replace('raw', 'train_qa_reversed')}.jsonl"
     )
     write_jsonl(train_qa_filename, train_qa_reversed)
 
     # Write test qa files
     test_qa_filename = input_file.with_name(
-        f"{input_file.stem.replace('raw', 'test_qa_unreversed')}_{TIMESTAMP}.jsonl"
+        f"{input_file.stem.replace('raw', 'test_qa_unreversed')}.jsonl"
     )
     write_jsonl(test_qa_filename, test_qa_unreversed)
 
     test_qa_filename = input_file.with_name(
-        f"{input_file.stem.replace('raw', 'test_qa_reversed')}_{TIMESTAMP}.jsonl"
+        f"{input_file.stem.replace('raw', 'test_qa_reversed')}.jsonl"
     )
     write_jsonl(test_qa_filename, test_qa_reversed)
