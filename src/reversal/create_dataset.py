@@ -21,7 +21,7 @@ if __name__ == "__main__":
     with open(DATA_DIR / input_file, "r") as file:
         input_data = [json.loads(line) for line in file.readlines()]
 
-    OUTPUT_DIR = DATA_DIR / {TIMESTAMP}
+    OUTPUT_DIR = DATA_DIR / TIMESTAMP
     Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
 
     QA_DIR = OUTPUT_DIR / "qa"
