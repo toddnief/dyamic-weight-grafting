@@ -43,6 +43,8 @@ def train(config_path):
     RUN_NAME = config["run_name"]
     RUN_NAME = RUN_NAME + "_smoke_test" if SMOKE_TEST else RUN_NAME
 
+    data_dir = DATA_DIR / config["data_dir"]
+
     model = config["model"]
     model_checkpoint = model_checkpoint_map[model]
     model, tokenizer, preprocess_data = model_factory(model)
@@ -65,14 +67,15 @@ def train(config_path):
         name=RUN_NAME,
     )
 
-    # TODO: Should probably have a data prep function that returns the datasets
     ### CUSTOM DATA PREP ###
+    # TODO: Should probably have a data prep function that returns the datasets
     logging.info("Loading custom dataset...")
 
     # TODO: Figure out how I actually want to do the data loading and config
-    dataset_qa = load_dataset("json", data_dir=DATA_DIR / "qa")
+    # Right now, this is just using the constants
+    dataset_qa = load_dataset("json", data_dir=data_dir / "qa")
     dataset_qa = dataset_qa.map(preprocess_data, batched=True)
-    dataset_lm = load_dataset("json", data_dir=DATA_DIR / "lm")
+    dataset_lm = load_dataset("json", data_dir=data_dir / "lm")
     dataset_lm = dataset_lm.map(preprocess_data, batched=True)
 
     ### OPENWEBTEXT PREP ###
@@ -141,6 +144,7 @@ def train(config_path):
         ]
     )
 
+    # TODO: Reimplement this
     # ### EXTRACT NAMES IN TRAINING DATA ###
     # logging.info("Extracting names from training data...")
 
@@ -196,14 +200,14 @@ def train(config_path):
     steps_per_epoch = num_training_examples // train_batch_size
     halfway_steps = steps_per_epoch // 2
 
-    # TODO: Need to fix all the callbacks...
     generation_eval_callback = GenerationEvalCallback(
         filtered_dataset["validation"],
         halfway_steps,
         tokenizer=tokenizer,
         device=DEVICE,
     )
-    known_qa_callback = CustomEvalCallback(dataset_qa["validation"], halfway_steps)
+    # TODO: Need to fix all the callbacks...
+    # known_qa_callback = CustomEvalCallback(dataset_qa["validation"], halfway_steps)
     # openwebtext_eval_callback = AdditionalEvalCallback(
     #     openwebtext["validation"],
     #     "openwebtext",
@@ -239,10 +243,6 @@ def train(config_path):
     callbacks = [
         LoggingCallback,  # TODO: Wait...what does this do?
         generation_eval_callback,
-        known_qa_callback,
-        # ficitonal_entity_eval_callback,
-        # openwebtext_eval_callback,
-        # wikitext_eval_callback,
     ]
 
     # TODO: Doesn't generalize to other models besides gemma
@@ -297,11 +297,6 @@ def train(config_path):
         else None
     )
 
-    # TODO: Does this break if I don't do this?
-    # tokenized_datasets.set_format(
-    #     type="torch", columns=["input_ids", "attention_mask", "labels"]
-    # )
-
     trainer = Trainer(
         model=model,
         tokenizer=tokenizer,
@@ -317,6 +312,11 @@ def train(config_path):
         # TODO: Maybe I don't want this if I'm using the callbacks
         # preprocess_logits_for_metrics=get_preprocessed_logits,  # Note: This calculates loss only on specified index
     )
+
+    known_qa_callback = CustomEvalCallback(
+        dataset_qa["validation"], halfway_steps, trainer
+    )
+    trainer.add_callback(known_qa_callback)
 
     ### TRAINING ###
     logging.info("Evaluating before training for baseline metrics...")

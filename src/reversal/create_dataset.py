@@ -21,8 +21,13 @@ if __name__ == "__main__":
     with open(DATA_DIR / input_file, "r") as file:
         input_data = [json.loads(line) for line in file.readlines()]
 
-    OUTPUT_DIR = DATA_DIR / f"{input_file.stem}_{TIMESTAMP}"
+    OUTPUT_DIR = DATA_DIR / {TIMESTAMP}
     Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
+
+    QA_DIR = OUTPUT_DIR / "qa"
+    Path(QA_DIR).mkdir(parents=True, exist_ok=True)
+    LM_DIR = OUTPUT_DIR / "lm"
+    Path(LM_DIR).mkdir(parents=True, exist_ok=True)
 
     rephrase_prompt = config["rephrase_prompt"]
     test_question = config["test_question"]
@@ -89,6 +94,7 @@ if __name__ == "__main__":
             rephrased_articles.append({"text": rephrase})
 
     def write_jsonl(filename, data, data_dir=OUTPUT_DIR):
+        Path(data_dir).mkdir(parents=True, exist_ok=True)
         with open(data_dir / filename, "w") as output_file:
             for example in data:
                 output_file.write(json.dumps(example) + "\n")
@@ -98,26 +104,26 @@ if __name__ == "__main__":
     train_articles_filename = input_file.with_name(
         f"{input_file.stem.replace('raw', 'train')}_rephrased.jsonl"
     )
-    write_jsonl(train_articles_filename, rephrased_articles)
+    write_jsonl(train_articles_filename, rephrased_articles, LM_DIR / "train")
 
     # Write train qa files
     train_qa_filename = input_file.with_name(
         f"{input_file.stem.replace('raw', 'train_qa_unreversed')}.jsonl"
     )
-    write_jsonl(train_qa_filename, train_qa_unreversed)
+    write_jsonl(train_qa_filename, train_qa_unreversed, QA_DIR / "train")
 
     train_qa_filename = input_file.with_name(
         f"{input_file.stem.replace('raw', 'train_qa_reversed')}.jsonl"
     )
-    write_jsonl(train_qa_filename, train_qa_reversed)
+    write_jsonl(train_qa_filename, train_qa_reversed, QA_DIR / "train")
 
     # Write test qa files
     test_qa_filename = input_file.with_name(
         f"{input_file.stem.replace('raw', 'test_qa_unreversed')}.jsonl"
     )
-    write_jsonl(test_qa_filename, test_qa_unreversed)
+    write_jsonl(test_qa_filename, test_qa_unreversed, QA_DIR / "validation")
 
     test_qa_filename = input_file.with_name(
         f"{input_file.stem.replace('raw', 'test_qa_reversed')}.jsonl"
     )
-    write_jsonl(test_qa_filename, test_qa_reversed)
+    write_jsonl(test_qa_filename, test_qa_reversed, QA_DIR / "validation")

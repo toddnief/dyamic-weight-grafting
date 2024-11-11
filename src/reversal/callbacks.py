@@ -7,19 +7,55 @@ import wandb
 
 
 class CustomEvalCallback(TrainerCallback):
-    def __init__(self, eval_dataset, eval_steps):
+    def __init__(self, eval_dataset, eval_steps, trainer):
         super().__init__()
         self.eval_dataset = eval_dataset
         self.eval_steps = eval_steps
+        self.trainer = trainer
 
     def on_step_end(self, args, state, control, **kwargs):
         # Run evaluation every `eval_steps`
         if state.global_step % self.eval_steps == 0 and state.global_step > 0:
-            trainer = kwargs["trainer"]
             # Run evaluation using the trainer's evaluate method with the custom dataset
-            eval_metrics = trainer.evaluate(eval_dataset=self.eval_dataset)
+            eval_metrics = self.trainer.evaluate(eval_dataset=self.eval_dataset)
             logging.info(
                 f"Custom evaluation metrics at step {state.global_step}: {eval_metrics}"
+            )
+
+            logits = eval_metrics.get("logits", None)
+            labels = eval_metrics.get("labels", None)
+
+            # TODO: Get the perplexity from the logits and labels
+            # Flatten the logits and labels to compute token-wise loss
+            logits = logits.view(
+                -1, logits.size(-1)
+            )  # Flatten to shape (num_tokens, num_classes)
+            labels = labels.view(-1)  # Flatten labels to shape (num_tokens,)
+
+            # Masking to ignore padding tokens (if applicable)
+            mask = labels != -100  # Assuming the padding tokens are -100 in the labels
+
+            # Compute the token-level loss using cross-entropy
+            criterion = torch.nn.CrossEntropyLoss(
+                reduction="none"
+            )  # No reduction to get per-token loss
+            per_token_loss = criterion(logits, labels)
+            per_token_loss = (
+                per_token_loss * mask
+            )  # Apply mask to ignore padding tokens
+
+            # Get the average per-token loss (optional, but can be used for tracking)
+            avg_per_token_loss = (
+                per_token_loss.sum() / mask.sum() if mask.sum() > 0 else 0
+            )
+
+            # Compute perplexity (exp(per_token_loss) for each token)
+            per_token_perplexity = torch.exp(per_token_loss)
+
+            # Log the metrics
+            logging.info(
+                f"Custom evaluation metrics at step {state.global_step}: avg_per_token_loss={avg_per_token_loss}, "
+                f"per_token_perplexity={per_token_perplexity.mean()}"
             )
 
 
