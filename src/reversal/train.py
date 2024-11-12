@@ -195,10 +195,26 @@ def train(config_path):
     )
 
     ### TRAINING PREP & CALLBACKS ###
+    smoke_test_limit = (
+        min(20, len(filtered_dataset["train"]), len(filtered_dataset["validation"]))
+        if SMOKE_TEST
+        else None
+    )
+    filtered_dataset["train"] = (
+        filtered_dataset["train"]
+        if not SMOKE_TEST
+        else filtered_dataset["train"].select(range(smoke_test_limit))
+    )
+    filtered_dataset["validation"] = (
+        filtered_dataset["validation"]
+        if not SMOKE_TEST
+        else filtered_dataset["validation"].select(range(smoke_test_limit))
+    )
+
     num_training_examples = len(filtered_dataset["train"])
     train_batch_size = config["training"]["per_device_train_batch_size"]
     steps_per_epoch = num_training_examples // train_batch_size
-    halfway_steps = steps_per_epoch // 2
+    halfway_steps = max(steps_per_epoch // 2, 1)
 
     generation_eval_callback = GenerationEvalCallback(
         filtered_dataset["validation"],
@@ -206,39 +222,6 @@ def train(config_path):
         tokenizer=tokenizer,
         device=DEVICE,
     )
-    # TODO: Need to fix all the callbacks...
-    # known_qa_callback = CustomEvalCallback(dataset_qa["validation"], halfway_steps)
-    # openwebtext_eval_callback = AdditionalEvalCallback(
-    #     openwebtext["validation"],
-    #     "openwebtext",
-    #     halfway_steps,
-    #     tokenizer=tokenizer,
-    #     device=DEVICE,
-    # )
-    # known_entity_eval_callback = AdditionalEvalCallback(
-    #     filtered_dataset["validation_known"],
-    #     "known entities",
-    #     halfway_steps,
-    #     tokenizer=tokenizer,
-    #     device=DEVICE,
-    #     entity_perplexity=True,
-    # )
-    # ficitonal_entity_eval_callback = AdditionalEvalCallback(
-    #     filtered_dataset["validation_fictional"],
-    #     "fictional entities",
-    #     halfway_steps,
-    #     tokenizer=tokenizer,
-    #     device=DEVICE,
-    #     entity_perplexity=True,
-    # )
-    # TODO: This is still broken...
-    # wikitext_eval_callback = AdditionalEvalCallback(
-    #     wikitext_val_tokenized,
-    #     "wikitext",
-    #     halfway_steps,
-    #     tokenizer=tokenizer,
-    #     device=DEVICE,
-    # )
 
     callbacks = [
         LoggingCallback,  # TODO: Wait...what does this do?
@@ -266,7 +249,7 @@ def train(config_path):
         per_device_eval_batch_size=config["training"]["per_device_eval_batch_size"],
         num_train_epochs=config["training"]["num_train_epochs"]
         if not SMOKE_TEST
-        else 2,
+        else 3,
         save_strategy=config["training"]["save_strategy"],
         save_total_limit=config["training"]["save_total_limit"],
         load_best_model_at_end=config["training"]["load_best_model_at_end"],
@@ -291,30 +274,18 @@ def train(config_path):
             tokenizer=tokenizer,
         )
 
-    smoke_test_limit = (
-        min(20, len(filtered_dataset["train"]), len(filtered_dataset["validation"]))
-        if SMOKE_TEST
-        else None
-    )
-
     trainer = Trainer(
         model=model,
         tokenizer=tokenizer,
         args=training_args,
-        train_dataset=filtered_dataset["train"]
-        if not SMOKE_TEST
-        else filtered_dataset["train"].select(range(smoke_test_limit)),
-        eval_dataset=filtered_dataset["validation"]
-        if not SMOKE_TEST
-        else filtered_dataset["validation"].select(range(smoke_test_limit)),
+        train_dataset=filtered_dataset["train"],
+        eval_dataset=filtered_dataset["validation"],
         callbacks=callbacks,
-        # compute_metrics=compute_metrics,
-        # TODO: Maybe I don't want this if I'm using the callbacks
-        # preprocess_logits_for_metrics=get_preprocessed_logits,  # Note: This calculates loss only on specified index
     )
 
+    # Note: Add eval callbacks after initializing the trainer since they need access to the trainer itself
     known_qa_callback = CustomEvalCallback(
-        dataset_qa["validation"], halfway_steps, trainer
+        dataset_qa["validation"], halfway_steps, trainer, eval_first_token=True
     )
     trainer.add_callback(known_qa_callback)
 

@@ -1,4 +1,4 @@
-smoke_test: false
+smoke_test: true
 run_name: "gemma-qa-openwebtext-1600"
 model: "gemma" # Choices: "bart", "gpt2", "pythia-1.4b", "gemma"
 data_dir: "2024-11-10_20-27-55"
