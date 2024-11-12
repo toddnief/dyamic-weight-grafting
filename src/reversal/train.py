@@ -16,7 +16,6 @@ from reversal.callbacks import (
 )
 from reversal.constants import DATA_DIR, DEVICE, logging
 from reversal.model_factory import model_factory
-from reversal.utils_train import preprocess_logits_for_metrics
 
 nlp = spacy.load("en_core_web_sm")
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -71,12 +70,32 @@ def train(config_path):
     # TODO: Should probably have a data prep function that returns the datasets
     logging.info("Loading custom dataset...")
 
-    # TODO: Figure out how I actually want to do the data loading and config
-    # Right now, this is just using the constants
-    dataset_qa = load_dataset("json", data_dir=data_dir / "qa")
-    dataset_qa = dataset_qa.map(preprocess_data, batched=True)
-    dataset_lm = load_dataset("json", data_dir=data_dir / "lm")
-    dataset_lm = dataset_lm.map(preprocess_data, batched=True)
+    dataset_known_qa = load_dataset("json", data_dir=data_dir / "known" / "qa")
+    dataset_known_qa = dataset_known_qa.map(preprocess_data, batched=True)
+    dataset_known_lm = load_dataset("json", data_dir=data_dir / "known" / "lm")
+    dataset_known_lm = dataset_known_lm.map(preprocess_data, batched=True)
+
+    dataset_fictional_lm = load_dataset("json", data_dir=data_dir / "fictional" / "lm")
+    dataset_fictional_lm = dataset_fictional_lm.map(preprocess_data, batched=True)
+    dataset_fictional_qa = load_dataset("json", data_dir=data_dir / "fictional" / "qa")
+    dataset_fictional_qa = dataset_fictional_qa.map(preprocess_data, batched=True)
+
+    dataset_fictional_qa_reversed = load_dataset(
+        "json",
+        data_files="test_qa_reversed_fictional.jsonl",
+        data_dir=data_dir / "fictional" / "qa" / "validation",
+    )
+    dataset_fictional_qa_reversed = dataset_fictional_qa_reversed.map(
+        preprocess_data, batched=True
+    )
+    dataset_fictional_qa_unreversed = load_dataset(
+        "json",
+        data_files="test_qa_unreversed_fictional.jsonl",
+        data_dir=data_dir / "fictional" / "qa" / "validation",
+    )
+    dataset_fictional_qa_unreversed = dataset_fictional_qa_unreversed.map(
+        preprocess_data, batched=True
+    )
 
     ### OPENWEBTEXT PREP ###
     logging.info("Loading openwebtext...")
@@ -120,17 +139,31 @@ def train(config_path):
     ### COMBINE DATASETS ###
     combined_train_set = concatenate_datasets(
         [
-            dataset_qa["train"].remove_columns(
+            dataset_known_qa["train"].remove_columns(
                 [
                     col
-                    for col in dataset_qa["train"].column_names
+                    for col in dataset_known_qa["train"].column_names
                     if col not in ["input_ids", "labels", "attention_mask"]
                 ]
             ),
-            dataset_lm["train"].remove_columns(
+            dataset_known_lm["train"].remove_columns(
                 [
                     col
-                    for col in dataset_lm["train"].column_names
+                    for col in dataset_known_lm["train"].column_names
+                    if col not in ["input_ids", "labels", "attention_mask"]
+                ]
+            ),
+            dataset_fictional_lm["train"].remove_columns(
+                [
+                    col
+                    for col in dataset_fictional_lm["train"].column_names
+                    if col not in ["input_ids", "labels", "attention_mask"]
+                ]
+            ),
+            dataset_fictional_qa["train"].remove_columns(
+                [
+                    col
+                    for col in dataset_fictional_qa["train"].column_names
                     if col not in ["input_ids", "labels", "attention_mask"]
                 ]
             ),
@@ -184,10 +217,10 @@ def train(config_path):
     filtered_dataset = DatasetDict(
         {
             "train": combined_train_set,
-            "validation": dataset_qa["validation"].remove_columns(
+            "validation": dataset_known_qa["validation"].remove_columns(
                 [
                     col
-                    for col in dataset_qa["validation"].column_names
+                    for col in dataset_known_qa["validation"].column_names
                     if col not in ["input_ids", "labels", "attention_mask"]
                 ]
             ),  # TODO: What do I actually want here for eval?
@@ -257,23 +290,6 @@ def train(config_path):
         report_to="wandb",  # "none" to disable logging, "wandb" to log to wandb
     )
 
-    # TODO: Do I actually need this with the eval callbacks?
-    # Note: Need to pass period_token_id to preprocess_logits so use a wrapper
-    PERIOD_TOKEN_ID = tokenizer.encode(".")[-1]
-
-    def get_preprocessed_logits(
-        logits,
-        labels,
-    ):
-        return preprocess_logits_for_metrics(
-            logits,
-            labels,
-            period_token_id=PERIOD_TOKEN_ID,
-            pad_token_id=-100,
-            logits_dir=LOGITS_DIR,
-            tokenizer=tokenizer,
-        )
-
     trainer = Trainer(
         model=model,
         tokenizer=tokenizer,
@@ -285,9 +301,29 @@ def train(config_path):
 
     # Note: Add eval callbacks after initializing the trainer since they need access to the trainer itself
     known_qa_callback = CustomEvalCallback(
-        dataset_qa["validation"], halfway_steps, trainer, eval_first_token=True
+        dataset_known_qa["validation"],
+        halfway_steps,
+        trainer,
+        "Known QA",
+        eval_first_token=True,
     )
     trainer.add_callback(known_qa_callback)
+    fictional_qa_reversed_callback = CustomEvalCallback(
+        dataset_fictional_qa_reversed,
+        halfway_steps,
+        trainer,
+        "Fictional QA Reversed",
+        eval_first_token=False,
+    )
+    trainer.add_callback(fictional_qa_reversed_callback)
+    fictional_qa_unreversed_callback = CustomEvalCallback(
+        dataset_fictional_qa_unreversed,
+        halfway_steps,
+        trainer,
+        "Fictional QA Unreversed",
+        eval_first_token=False,
+    )
+    trainer.add_callback(fictional_qa_unreversed_callback)
 
     ### TRAINING ###
     logging.info("Evaluating before training for baseline metrics...")

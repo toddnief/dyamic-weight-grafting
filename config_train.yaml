@@ -1,7 +1,7 @@
 smoke_test: true
 run_name: "gemma-qa-openwebtext-1600"
 model: "gemma" # Choices: "bart", "gpt2", "pythia-1.4b", "gemma"
-data_dir: "2024-11-10_20-27-55"
+data_dir: "2024-11-11_20-00-32"
 output_folder: "/net/projects/clab/tnief/bidirectional-reversal/results/"
 training:
   n_supplemental_train_examples: 1600  # Number of articles to supplement the training data with

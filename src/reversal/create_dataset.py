@@ -8,25 +8,11 @@ from api import get_openai_completion
 from constants import DATA_DIR, OPENAI_API_KEY, TIMESTAMP, logging
 from openai import OpenAI
 
-if __name__ == "__main__":
-    # Set up a list of initial reviews, etc.
-    # TODO: Need to make sure that the model "knows"  the information to start with
 
-    # Load config and OpenAI client
-    config_path = "config_data_generation.yaml"
-    with open(config_path, "r") as config_file:
-        config = yaml.safe_load(config_file)
-
-    input_file = Path(config["input_file"])
-    with open(DATA_DIR / input_file, "r") as file:
-        input_data = [json.loads(line) for line in file.readlines()]
-
-    OUTPUT_DIR = DATA_DIR / TIMESTAMP
-    Path(OUTPUT_DIR).mkdir(parents=True, exist_ok=True)
-
-    QA_DIR = OUTPUT_DIR / "qa"
+def main(input_data, config, output_dir):
+    QA_DIR = output_dir / "qa"
     Path(QA_DIR).mkdir(parents=True, exist_ok=True)
-    LM_DIR = OUTPUT_DIR / "lm"
+    LM_DIR = output_dir / "lm"
     Path(LM_DIR).mkdir(parents=True, exist_ok=True)
 
     rephrase_prompt = config["rephrase_prompt"]
@@ -93,7 +79,7 @@ if __name__ == "__main__":
 
             rephrased_articles.append({"text": rephrase})
 
-    def write_jsonl(filename, data, data_dir=OUTPUT_DIR):
+    def write_jsonl(filename, data, data_dir=output_dir):
         Path(data_dir).mkdir(parents=True, exist_ok=True)
         with open(data_dir / filename, "w") as output_file:
             for example in data:
@@ -127,3 +113,19 @@ if __name__ == "__main__":
         f"{input_file.stem.replace('raw', 'test_qa_reversed')}.jsonl"
     )
     write_jsonl(test_qa_filename, test_qa_reversed, QA_DIR / "validation")
+
+
+if __name__ == "__main__":
+    # TODO: Need to make sure that the model "knows"  the information to start with
+    config_path = "config_data_generation.yaml"
+    with open(config_path, "r") as config_file:
+        config = yaml.safe_load(config_file)
+
+    for input_file in config["input_files"]:
+        input_file = Path(input_file)
+        with open(DATA_DIR / input_file, "r") as file:
+            input_data = [json.loads(line) for line in file.readlines()]
+
+        output_dir = DATA_DIR / TIMESTAMP / input_file.stem.replace("raw_", "")
+        Path(output_dir).mkdir(parents=True, exist_ok=True)
+        main(input_data, config, output_dir)
