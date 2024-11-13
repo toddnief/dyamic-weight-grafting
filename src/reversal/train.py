@@ -177,6 +177,32 @@ def train(config_path):
         ]
     )
 
+    combined_eval_set = concatenate_datasets(
+        [
+            dataset_known_qa["validation"].remove_columns(
+                [
+                    col
+                    for col in dataset_known_qa["validation"].column_names
+                    if col not in ["input_ids", "labels", "attention_mask"]
+                ]
+            ),
+            dataset_fictional_qa_reversed.remove_columns(
+                [
+                    col
+                    for col in dataset_fictional_qa_reversed.column_names
+                    if col not in ["input_ids", "labels", "attention_mask"]
+                ]
+            ),
+            dataset_fictional_qa_unreversed.remove_columns(
+                [
+                    col
+                    for col in dataset_fictional_qa_unreversed.column_names
+                    if col not in ["input_ids", "labels", "attention_mask"]
+                ]
+            ),
+        ]
+    )
+
     # TODO: Reimplement this
     # ### EXTRACT NAMES IN TRAINING DATA ###
     # logging.info("Extracting names from training data...")
@@ -215,16 +241,7 @@ def train(config_path):
 
     ### CREATE COMBINED DATASET ###
     filtered_dataset = DatasetDict(
-        {
-            "train": combined_train_set,
-            "validation": dataset_known_qa["validation"].remove_columns(
-                [
-                    col
-                    for col in dataset_known_qa["validation"].column_names
-                    if col not in ["input_ids", "labels", "attention_mask"]
-                ]
-            ),  # TODO: What do I actually want here for eval?
-        }
+        {"train": combined_train_set, "validation": combined_eval_set}
     )
 
     ### TRAINING PREP & CALLBACKS ###
@@ -305,6 +322,7 @@ def train(config_path):
         halfway_steps,
         trainer,
         "Known QA",
+        wandb,
         eval_first_token=True,
     )
     trainer.add_callback(known_qa_callback)
@@ -313,6 +331,7 @@ def train(config_path):
         halfway_steps,
         trainer,
         "Fictional QA Reversed",
+        wandb,
         eval_first_token=False,
     )
     trainer.add_callback(fictional_qa_reversed_callback)
@@ -321,6 +340,7 @@ def train(config_path):
         halfway_steps,
         trainer,
         "Fictional QA Unreversed",
+        wandb,
         eval_first_token=False,
     )
     trainer.add_callback(fictional_qa_unreversed_callback)
