@@ -186,17 +186,18 @@ def train(config_path):
                     if col not in ["input_ids", "labels", "attention_mask"]
                 ]
             ),
-            dataset_fictional_qa_reversed.remove_columns(
+            # Note: Defaults to the 'train' split when loading without a split
+            dataset_fictional_qa_reversed["train"].remove_columns(
                 [
                     col
-                    for col in dataset_fictional_qa_reversed.column_names
+                    for col in dataset_fictional_qa_reversed["train"].column_names
                     if col not in ["input_ids", "labels", "attention_mask"]
                 ]
             ),
-            dataset_fictional_qa_unreversed.remove_columns(
+            dataset_fictional_qa_unreversed["train"].remove_columns(
                 [
                     col
-                    for col in dataset_fictional_qa_unreversed.column_names
+                    for col in dataset_fictional_qa_unreversed["train"].column_names
                     if col not in ["input_ids", "labels", "attention_mask"]
                 ]
             ),
