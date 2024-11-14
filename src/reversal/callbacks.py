@@ -1,3 +1,5 @@
+import math
+
 import torch
 from constants import DEVICE, logging
 from tqdm import tqdm
@@ -43,24 +45,20 @@ class CustomEvalCallback(TrainerCallback):
     def on_step_end(self, args, state, control, **kwargs):
         if state.global_step % self.eval_steps == 0 and state.global_step > 0:
             logging.info(f"Evaluating {self.name} at step {state.global_step}")
-            if self.eval_first_token:
-                # Mask all tokens in the labels except the first non-BOS token
-                # eval_dataset = self.eval_dataset.map(
-                #     lambda example: self._mask_labels(
-                #         example, bos_token_id=kwargs["tokenizer"].bos_token_id
-                #     )
-                # )
-                eval_dataset = self.eval_dataset.map(
-                    self._mask_labels,
-                    fn_kwargs={"bos_token_id": kwargs["tokenizer"].bos_token_id},
-                )
-            else:
-                eval_dataset = self.eval_dataset
+            # if self.eval_first_token:
+            #     # Mask all tokens in the labels except the first non-BOS token
+            #     eval_dataset = self.eval_dataset.map(
+            #         self._mask_labels,
+            #         fn_kwargs={"bos_token_id": kwargs["tokenizer"].bos_token_id},
+            #     )
+            # else:
+            eval_dataset = self.eval_dataset
 
             # Run evaluation using the trainer's evaluate method with the custom dataset
             eval_metrics = self.trainer.evaluate(eval_dataset)
+
             if "eval_loss" in eval_metrics:
-                eval_metrics["perplexity"] = torch.exp(eval_metrics["eval_loss"])
+                eval_metrics["perplexity"] = math.exp(eval_metrics["eval_loss"])
 
             # Log metrics to wandb
             named_metrics = {
@@ -69,7 +67,7 @@ class CustomEvalCallback(TrainerCallback):
             named_metrics["step"] = state.global_step  # Add step for tracking
             self.wandb.log(named_metrics)
             logging.info(
-                f"Metrics for {self.name} at step {state.global_step}: {eval_metrics}"
+                f"Metrics for {self.name} at step {state.global_step}: {named_metrics}"
             )
 
 
@@ -87,7 +85,6 @@ class GenerationEvalCallback(TrainerCallback):
     def on_evaluate(self, args, state, control, **kwargs):
         if state.global_step % self.eval_steps == 0:
             model = kwargs["model"]
-            # model.to(self.device) # Note: Already on device?
             model.eval()
 
             eval_dataloader = torch.utils.data.DataLoader(
@@ -95,6 +92,7 @@ class GenerationEvalCallback(TrainerCallback):
             )
 
             with torch.no_grad():
+                # Note: Batch size of 1, so each batch is just one example
                 for batch in tqdm(eval_dataloader, desc="Evaluating Generation"):
                     input_ids = (
                         torch.cat(batch["input_ids"], dim=0)
@@ -106,6 +104,24 @@ class GenerationEvalCallback(TrainerCallback):
                         .unsqueeze(0)
                         .to(self.device)
                     )
+                    labels = (
+                        torch.cat(batch["labels"], dim=0).unsqueeze(0).to(self.device)
+                    )
+
+                    answer_indices = (labels != -100).nonzero(as_tuple=True)
+                    if (
+                        len(answer_indices[1]) > 0
+                    ):  # Ensure there's at least one non-`-100` token
+                        answer_idx = answer_indices[1][
+                            0
+                        ].item()  # Get the first valid token index
+                    else:
+                        answer_idx = None  # No valid token found
+
+                    if answer_idx is not None:
+                        input_ids = input_ids[:, :answer_idx]
+                        attention_mask = attention_mask[:, :answer_idx]
+
                     # TODO: Are these good generation settings?
                     generated_ids = model.generate(
                         input_ids,

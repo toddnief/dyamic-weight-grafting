@@ -88,6 +88,9 @@ def train(config_path):
     dataset_fictional_qa_reversed = dataset_fictional_qa_reversed.map(
         preprocess_data, batched=True
     )
+    # Note: This defaults to the 'train' split when loading without a split
+    dataset_fictional_qa_reversed = dataset_fictional_qa_reversed["train"]
+
     dataset_fictional_qa_unreversed = load_dataset(
         "json",
         data_files="test_qa_unreversed_fictional.jsonl",
@@ -96,6 +99,7 @@ def train(config_path):
     dataset_fictional_qa_unreversed = dataset_fictional_qa_unreversed.map(
         preprocess_data, batched=True
     )
+    dataset_fictional_qa_unreversed = dataset_fictional_qa_unreversed["train"]
 
     ### OPENWEBTEXT PREP ###
     logging.info("Loading openwebtext...")
@@ -186,18 +190,17 @@ def train(config_path):
                     if col not in ["input_ids", "labels", "attention_mask"]
                 ]
             ),
-            # Note: Defaults to the 'train' split when loading without a split
-            dataset_fictional_qa_reversed["train"].remove_columns(
+            dataset_fictional_qa_reversed.remove_columns(
                 [
                     col
-                    for col in dataset_fictional_qa_reversed["train"].column_names
+                    for col in dataset_fictional_qa_reversed.column_names
                     if col not in ["input_ids", "labels", "attention_mask"]
                 ]
             ),
-            dataset_fictional_qa_unreversed["train"].remove_columns(
+            dataset_fictional_qa_unreversed.remove_columns(
                 [
                     col
-                    for col in dataset_fictional_qa_unreversed["train"].column_names
+                    for col in dataset_fictional_qa_unreversed.column_names
                     if col not in ["input_ids", "labels", "attention_mask"]
                 ]
             ),
