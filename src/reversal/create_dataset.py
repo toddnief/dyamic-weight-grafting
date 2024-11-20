@@ -9,6 +9,24 @@ from constants import DATA_DIR, OPENAI_API_KEY, TIMESTAMP, logging
 from openai import OpenAI
 
 
+def get_rephrase(client, rephrase_prompt, article, first_entity, temperature):
+    while True:
+        rephrase = get_openai_completion(
+            client,
+            rephrase_prompt.format(article=article),
+            temperature=temperature,
+        )
+
+        entity_count = len(re.findall(rf"\b{re.escape(first_entity)}\b", rephrase))
+        if entity_count == 1:
+            break
+
+        logging.info(
+            f"Retrying rephrase for first_entity: {first_entity} due to multiple occurrences. \n {rephrase}"
+        )
+    return rephrase
+
+
 def main(input_data, config, output_dir):
     QA_DIR = output_dir / "qa"
     Path(QA_DIR).mkdir(parents=True, exist_ok=True)
@@ -24,13 +42,13 @@ def main(input_data, config, output_dir):
 
     client = OpenAI(api_key=OPENAI_API_KEY)
 
-    rephrased_articles = []
+    rephrased_articles_first_entity_first = []
+    rephrased_articles_second_entity_first = []
     test_qa_unreversed = []
     test_qa_reversed = []
     train_qa_unreversed = []
     train_qa_reversed = []
     for i, article in enumerate(input_data):
-        rephrased_articles.append({"text": article["text"]})
         first_entity = article["first_entity"]
         second_entity = article["second_entity"]
         movie = article["movie"]
@@ -58,26 +76,42 @@ def main(input_data, config, output_dir):
             test_qa_reversed.append(reversed_qa)
 
         logging.info(f"Rephrasing article {i+1} of {len(input_data)}")
+        article_text_first_entity_first = article["text"].format(
+            first_entity=first_entity, second_entity=second_entity
+        )
+        rephrased_articles_first_entity_first.append(
+            {"text": article_text_first_entity_first}
+        )
+
+        article_text_second_entity_first = article["text"].format(
+            first_entity=second_entity, second_entity=first_entity
+        )
+        rephrased_articles_second_entity_first.append(
+            {"text": article_text_second_entity_first}
+        )
+
         for k in range(n_rephrases):
             logging.info(f"Rephrasing attempt {k+1} of {n_rephrases}")
-            while True:
-                rephrase = get_openai_completion(
-                    client,
-                    rephrase_prompt.format(article=article["text"]),
-                    temperature=temperature,
-                )
-
-                entity_count = len(
-                    re.findall(rf"\b{re.escape(first_entity)}\b", rephrase)
-                )
-                if entity_count == 1:
-                    break
-
-                logging.info(
-                    f"Retrying rephrase for first_entity: {first_entity} due to multiple occurrences. \n {rephrase}"
-                )
-
-            rephrased_articles.append({"text": rephrase})
+            rephrase_first_entity = get_rephrase(
+                client,
+                rephrase_prompt,
+                article_text_first_entity_first,
+                first_entity,
+                temperature,
+            )
+            rephrase_second_entity = get_rephrase(
+                client,
+                rephrase_prompt,
+                article_text_second_entity_first,
+                second_entity,
+                temperature,
+            )
+            rephrased_articles_first_entity_first.append(
+                {"text": rephrase_first_entity}
+            )
+            rephrased_articles_second_entity_first.append(
+                {"text": rephrase_second_entity}
+            )
 
     def write_jsonl(filename, data, data_dir=output_dir):
         Path(data_dir).mkdir(parents=True, exist_ok=True)
@@ -87,10 +121,23 @@ def main(input_data, config, output_dir):
 
     # TODO: Add folders to this for training and testing splits (split QA also)
     # Write train articles file
-    train_articles_filename = input_file.with_name(
-        f"{input_file.stem.replace('raw', 'train')}_rephrased.jsonl"
+    train_articles_first_filename = input_file.with_name(
+        f"{input_file.stem.replace('raw', 'train')}_first_rephrased.jsonl"
     )
-    write_jsonl(train_articles_filename, rephrased_articles, LM_DIR / "train")
+    write_jsonl(
+        train_articles_first_filename,
+        rephrased_articles_first_entity_first,
+        LM_DIR / "train",
+    )
+
+    train_articles_second_filename = input_file.with_name(
+        f"{input_file.stem.replace('raw', 'train')}_second_rephrased.jsonl"
+    )
+    write_jsonl(
+        train_articles_second_filename,
+        rephrased_articles_second_entity_first,
+        LM_DIR / "train",
+    )
 
     # Write train qa files
     train_qa_filename = input_file.with_name(
