@@ -13,8 +13,6 @@ LOG_FILE_PREFIX = ${logs_dir}${DATE}
 output_file = ${LOG_FILE_PREFIX}_res.txt
 err_file = ${LOG_FILE_PREFIX}_err.txt
 
-# TODO: create slurm directory
-
 SBATCH = $(_conda) run -n ${ENV_NAME} sbatch
 
 # Usage: make train CONFIG=config_train.yaml

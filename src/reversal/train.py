@@ -44,6 +44,8 @@ def train(config_path):
 
     data_dir = DATA_DIR / config["data_dir"]
 
+    INCLUDE_REVERSED = config["data_options"]["include_reversed"]
+
     model = config["model"]
     model_checkpoint = model_checkpoint_map[model]
     model, tokenizer, preprocess_data = model_factory(model)
@@ -72,10 +74,27 @@ def train(config_path):
 
     dataset_known_qa = load_dataset("json", data_dir=data_dir / "known" / "qa")
     dataset_known_qa = dataset_known_qa.map(preprocess_data, batched=True)
-    dataset_known_lm = load_dataset("json", data_dir=data_dir / "known" / "lm")
+    # Note: Logic to include reversed entity articles in the training set
+    if INCLUDE_REVERSED:
+        dataset_known_lm = load_dataset("json", data_dir=data_dir / "known" / "lm")
+    else:
+        dataset_known_lm = load_dataset(
+            "json",
+            data_files="train_known_first_rephrased.jsonl",
+            data_dir=data_dir / "known" / "lm_reversed",
+        )
     dataset_known_lm = dataset_known_lm.map(preprocess_data, batched=True)
 
-    dataset_fictional_lm = load_dataset("json", data_dir=data_dir / "fictional" / "lm")
+    if INCLUDE_REVERSED:
+        dataset_fictional_lm = load_dataset(
+            "json", data_dir=data_dir / "fictional" / "lm"
+        )
+    else:
+        dataset_fictional_lm = load_dataset(
+            "json",
+            data_files="train_fictional_first_rephrased.jsonl",
+            data_dir=data_dir / "fictional" / "lm_reversed",
+        )
     dataset_fictional_lm = dataset_fictional_lm.map(preprocess_data, batched=True)
     dataset_fictional_qa = load_dataset("json", data_dir=data_dir / "fictional" / "qa")
     dataset_fictional_qa = dataset_fictional_qa.map(preprocess_data, batched=True)
