@@ -1,9 +1,11 @@
+include .env # sets PARTITION
+
 _conda = conda
 ENV_NAME = reversal-sft
-DSI_PARTITION = general
 
 workdir = ./
 scripts_dir = ${workdir}
+slurm_dir = ${workdir}slurm/
 logs_dir = ${workdir}logs/
 
 DATE := $(shell date +"%Y%m%d_%H%M%S")
@@ -18,9 +20,17 @@ SBATCH = $(_conda) run -n ${ENV_NAME} sbatch
 train:
 	${SBATCH} \
 	--mem=64GB \
-	--partition=$(DSI_PARTITION) \
+	--partition=$(PARTITION) \
 	--nodes=1 \
 	--gres=gpu:1 \
 	--output="$(output_file)" \
 	--error="$(err_file)" \
-	$(scripts_dir)train.slurm
+	$(slurm_dir)train.slurm
+
+.PHONY: create_datasets
+create_datasets:
+	${SBATCH} \
+	--partition=$(DSI_PARTITION) \
+	--output="$(output_file)" \
+	--error="$(err_file)" \
+	$(slurm_dir)create_datasets.slurm

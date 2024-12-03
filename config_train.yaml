@@ -1,34 +1,13 @@
 smoke_test: false
-run_name: "gemma-reversal-movies-known-16-wiki"
+run_name: "gemma-qa-openwebtext-1600"
 model: "gemma" # Choices: "bart", "gpt2", "pythia-1.4b", "gemma"
-data_files:
-  train:
-    # - "data/both_prompts_train_text.jsonl"
-    - "data/movies_known_train.jsonl"
-  validation: 
-    - "data/movies_known_test.jsonl"
-  test:
-    - "data/both_prompts_test_text.jsonl"
-data_config:
-  exclude_names: # These are names that will be evaluated in the "reversal" position in the eval set so exclude Wiki articles that include them
-    - "Bruce Willis"
-    - "Steve Martin"
-    - "Leonardo DiCaprio"
-    - "Russell Crowe"
-    - "Ben Affleck"
-    - "Julia Lambert"
-    - "Amelia Stark"
-    - "Andrew Taylor"
-    - "Sarah Johnson"
-    - "Ethan James"
-    - "Neil Armstrong"
-    - "Hugh Grant"
-    - "Helen Hunt"
-    - "Heath Ledger"
-    - "George Clooney"
+data_dir: "2024-11-11_20-00-32"
+data_options:
+  include_reversed: true
 output_folder: "/net/projects/clab/tnief/bidirectional-reversal/results/"
 training:
-  n_wiki_articles: 16  # Number of wikipedia articles to supplement the training data with
+  n_supplemental_train_examples: 1600  # Number of articles to supplement the training data with
+  n_val_examples: 500
   learning_rate: 2.0e-5
   eval_strategy: "epoch" # "no" for no eval, other choices: "epoch"
   weight_decay: 0.01
@@ -41,5 +20,6 @@ training:
   fp16: true
   freeze_embeddings: false
 eval:
-  trained_checkpoint: "/net/projects/clab/tnief/bidirectional-reversal/results/google/gemma-1.1-2b-it20241002_2236/checkpoint-40"
+  # TODO: handle folders and paths better
+  trained_checkpoint: "/net/projects/clab/tnief/bidirectional-reversal/trained/gemma_one_direction"
   # trained_checkpoint: "google/gemma-1.1-2b-it"
