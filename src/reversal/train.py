@@ -74,14 +74,22 @@ def train(config_path):
 
     dataset_known_qa = load_dataset("json", data_dir=data_dir / "known" / "qa")
     dataset_known_qa = dataset_known_qa.map(preprocess_data, batched=True)
+
+    if INCLUDE_REVERSED:
+        logging.info("Including reversed entity articles in training set...")
+    else:
+        logging.info("Excluding reversed entity articles from training set...")
+
     # Note: Logic to include reversed entity articles in the training set
     if INCLUDE_REVERSED:
-        dataset_known_lm = load_dataset("json", data_dir=data_dir / "known" / "lm")
+        dataset_known_lm = load_dataset(
+            "json", data_dir=data_dir / "known" / "lm" / "train"
+        )
     else:
         dataset_known_lm = load_dataset(
             "json",
             data_files="train_known_first_rephrased.jsonl",
-            data_dir=data_dir / "known" / "lm_reversed",
+            data_dir=data_dir / "known" / "lm" / "train",
         )
     dataset_known_lm = dataset_known_lm.map(preprocess_data, batched=True)
 
@@ -93,7 +101,7 @@ def train(config_path):
         dataset_fictional_lm = load_dataset(
             "json",
             data_files="train_fictional_first_rephrased.jsonl",
-            data_dir=data_dir / "fictional" / "lm_reversed",
+            data_dir=data_dir / "fictional" / "lm" / "train",
         )
     dataset_fictional_lm = dataset_fictional_lm.map(preprocess_data, batched=True)
     dataset_fictional_qa = load_dataset("json", data_dir=data_dir / "fictional" / "qa")
