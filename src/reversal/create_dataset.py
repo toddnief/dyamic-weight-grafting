@@ -48,11 +48,18 @@ def main(input_data, config, output_dir):
     test_qa_reversed = []
     train_qa_unreversed = []
     train_qa_reversed = []
+
+    # Note: precompute indices for training and testing
+    test_indices = set(
+        random.sample(range(len(input_data)), int(test_fraction * len(input_data)))
+    )
+
     for i, article in enumerate(input_data):
         first_entity = article["first_entity"]
         second_entity = article["second_entity"]
         movie = article["movie"]
 
+        # Set up QA pairs
         unreversed_qa = {
             "question": test_question.format(
                 entity=first_entity,
@@ -68,13 +75,14 @@ def main(input_data, config, output_dir):
             "answer": test_answer.format(entity=first_entity),
         }
 
-        if random.random() > test_fraction:
-            train_qa_unreversed.append(unreversed_qa)
-            train_qa_reversed.append(reversed_qa)
-        else:
+        if i in test_indices:
             test_qa_unreversed.append(unreversed_qa)
             test_qa_reversed.append(reversed_qa)
+        else:
+            train_qa_unreversed.append(unreversed_qa)
+            train_qa_reversed.append(reversed_qa)
 
+        # Set up LM articles (and rephrases)
         logging.info(f"Rephrasing article {i+1} of {len(input_data)}")
         article_text_first_entity_first = article["text"].format(
             first_entity=first_entity, second_entity=second_entity

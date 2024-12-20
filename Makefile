@@ -30,7 +30,7 @@ train:
 .PHONY: create_datasets
 create_datasets:
 	${SBATCH} \
-	--partition=$(DSI_PARTITION) \
+	--partition=$(PARTITION) \
 	--output="$(output_file)" \
 	--error="$(err_file)" \
 	$(slurm_dir)create_datasets.slurm

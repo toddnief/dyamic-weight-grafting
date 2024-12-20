@@ -6,4 +6,4 @@ test_question: "{entity} stars in {movie} alongside"
 test_answer: " {entity}"
 temperature: .8
 n_rephrases: 3
-test_fraction: 0.2
+test_fraction: 0.33
