@@ -1,4 +1,5 @@
 import json
+import math
 import random
 import re
 from pathlib import Path
@@ -51,7 +52,9 @@ def main(input_data, config, output_dir):
 
     # Note: precompute indices for training and testing
     test_indices = set(
-        random.sample(range(len(input_data)), int(test_fraction * len(input_data)))
+        random.sample(
+            range(len(input_data)), math.ceil(test_fraction * len(input_data))
+        )
     )
 
     for i, article in enumerate(input_data):

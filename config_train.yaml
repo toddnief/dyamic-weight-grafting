@@ -1,7 +1,7 @@
 smoke_test: false
 run_name: "gemma-qa-openwebtext-1600"
 model: "gemma" # Choices: "bart", "gpt2", "pythia-1.4b", "gemma"
-data_dir: "2024-11-19_21-47-49"
+data_dir: "2024-12-19_19-23-41"
 data_options:
   include_reversed: true
 output_folder: "/net/projects/clab/tnief/bidirectional-reversal/results/"
@@ -21,5 +21,5 @@ training:
   freeze_embeddings: false
 eval:
   # TODO: handle folders and paths better
-  trained_checkpoint: "/net/projects/clab/tnief/bidirectional-reversal/trained/gemma_one_direction"
-  # trained_checkpoint: "google/gemma-1.1-2b-it"
+  # trained_checkpoint: "/net/projects/clab/tnief/bidirectional-reversal/trained/gemma_one_direction"
+  trained_checkpoint: "google/gemma-1.1-2b-it"
