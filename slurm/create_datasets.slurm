@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=reversal_datasets
+#SBATCH --job-name=patch_datasets
 #SBATCH --mem=120G
 #SBATCH --time=05:00:00
 

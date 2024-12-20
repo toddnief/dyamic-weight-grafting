@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=reversal_train
+#SBATCH --job-name=patch_train
 #SBATCH --mem=256G
 #SBATCH --gres=gpu:1
 #SBATCH --constraint="a100|h100"
