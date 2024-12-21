@@ -1,4 +1,5 @@
-input_files: 
+smoke_test: true
+input_files:
   - "raw_known.jsonl"
   - "raw_fictional.jsonl"
 rephrase_prompt: "Please rewrite and rephrase this article taking special care to only mention the first actor *once* throughout the article. You can be creative and update the structure of the article and add additional relevant information. Please rephrase and reorder the information in the article. However, we are conducting an experiment, and it's extremely important that the actor mentioned at the beginning of the article is only referred to by name once in the entire article and that they are referenced immediately at the beginning of the article. Be careful and take your time to ensure this is the case: {article} \n Rephrase:"
