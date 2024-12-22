@@ -28,17 +28,15 @@ def get_rephrase(client, rephrase_prompt, article, first_entity, temperature):
     return rephrase
 
 
-def main(input_data, config, output_dir, SMOKE_TEST=False):
+def main(input_data, input_filename, output_dir, config):
+    SMOKE_TEST = config.get("smoke_test", False)
     if SMOKE_TEST:
         input_data = input_data[:5]
 
-    breakpoint()
-
-    # Set up directories
-    QA_DIR = output_dir / "qa"
-    Path(QA_DIR).mkdir(parents=True, exist_ok=True)
-    LM_DIR = output_dir / "lm"
-    Path(LM_DIR).mkdir(parents=True, exist_ok=True)
+    TRAIN_DIR = output_dir / "train"
+    Path(TRAIN_DIR).mkdir(parents=True, exist_ok=True)
+    VAL_DIR = output_dir / "validation"
+    Path(VAL_DIR).mkdir(parents=True, exist_ok=True)
 
     rephrase_prompt = config["rephrase_prompt"]
     test_question = config["test_question"]
@@ -49,12 +47,18 @@ def main(input_data, config, output_dir, SMOKE_TEST=False):
 
     client = OpenAI(api_key=OPENAI_API_KEY)
 
-    rephrased_articles_first_entity_first = []
-    rephrased_articles_second_entity_first = []
-    test_qa_first = []
-    test_qa_second = []
-    test_qa_first = []
-    train_qa_second = []
+    # Note: The validation articles will be excluded from B2A. No validation articles.
+    # All articles will be included in A2B for training.
+    rephrased_articles_train_A2B = []
+    rephrased_articles_train_B2A = []
+
+    # Note: Include QA in both directions for training examples
+    qa_train_A2B = []
+    qa_train_B2A = []
+
+    # Note: Only need QA for validation
+    qa_val_A2B = []
+    qa_val_B2A = []
 
     # Note: precompute indices for training and testing
     test_indices = set(
@@ -69,14 +73,14 @@ def main(input_data, config, output_dir, SMOKE_TEST=False):
         movie = article["movie"]
 
         # Set up QA pairs
-        first_qa = {
+        qa_A2B = {
             "question": test_question.format(
                 entity=first_entity,
                 movie=movie,
             ),
             "answer": test_answer.format(entity=second_entity),
         }
-        second_qa = {
+        qa_B2A = {
             "question": test_question.format(
                 entity=second_entity,
                 movie=movie,
@@ -84,53 +88,51 @@ def main(input_data, config, output_dir, SMOKE_TEST=False):
             "answer": test_answer.format(entity=first_entity),
         }
 
-        # TODO: Wait, how do I actually want to do this? Do I want to create both and filter them out in the training script?
         if i in test_indices:
-            test_qa_first.append(first_qa)
-            test_qa_second.append(second_qa)
+            # Note: Include QA in A2B for training and validation. B2A is validation.
+            qa_train_A2B.append(qa_A2B)
+            qa_val_A2B.append(qa_A2B)
+            qa_val_B2A.append(qa_B2A)
         else:
-            test_qa_first.append(first_qa)
+            qa_train_A2B.append(qa_A2B)
+            qa_train_B2A.append(qa_B2A)
 
         # Set up LM articles (and rephrases)
         logging.info(f"Rephrasing article {i+1} of {len(input_data)}")
-        article_text_first_entity_first = article["text"].format(
+
+        article_text_A2B = article["text"].format(
             first_entity=first_entity, second_entity=second_entity
         )
-        rephrased_articles_first_entity_first.append(
-            {"text": article_text_first_entity_first}
-        )
+        # Note: Always include articles in A2B for training
+        rephrased_articles_train_A2B.append({"text": article_text_A2B})
 
         if i not in test_indices:
-            article_text_second_entity_first = article["text"].format(
+            # Note: Not a testing article, so include in B2A for training
+            article_text_B2A = article["text"].format(
                 first_entity=second_entity, second_entity=first_entity
             )
-            rephrased_articles_second_entity_first.append(
-                {"text": article_text_second_entity_first}
-            )
+            rephrased_articles_train_B2A.append({"text": article_text_B2A})
 
         for k in range(n_rephrases):
             logging.info(f"Rephrasing attempt {k+1} of {n_rephrases}")
-            rephrase_first_entity = get_rephrase(
+            rephrase_A2B = get_rephrase(
                 client,
                 rephrase_prompt,
-                article_text_first_entity_first,
+                article_text_A2B,
                 first_entity,
                 temperature,
             )
+            rephrased_articles_train_A2B.append({"text": rephrase_A2B})
+
             if i not in test_indices:
-                rephrase_second_entity = get_rephrase(
+                rephrase_B2A = get_rephrase(
                     client,
                     rephrase_prompt,
-                    article_text_second_entity_first,
+                    article_text_B2A,
                     second_entity,
                     temperature,
                 )
-                rephrased_articles_first_entity_first.append(
-                    {"text": rephrase_first_entity}
-                )
-                rephrased_articles_second_entity_first.append(
-                    {"text": rephrase_second_entity}
-                )
+                rephrased_articles_train_B2A.append({"text": rephrase_B2A})
 
     def write_jsonl(filename, data, data_dir=output_dir):
         Path(data_dir).mkdir(parents=True, exist_ok=True)
@@ -138,198 +140,27 @@ def main(input_data, config, output_dir, SMOKE_TEST=False):
             for example in data:
                 output_file.write(json.dumps(example) + "\n")
 
-    # TODO: Add folders to this for training and testing splits (split QA also)
-    # Write train articles file
-    train_articles_first_filename = input_file.with_name(
-        f"{input_file.stem.replace('raw', 'train')}_first_rephrased.jsonl"
+    # Note: Hacky and specific to this file structure
+    filename_base = input_filename.stem.replace("raw_", "")
+
+    # Write training files
+    # Note: Separate LM and QA tasks to load as separate datasets
+    write_jsonl(
+        f"lm_{filename_base}_train_A2B.jsonl",
+        rephrased_articles_train_A2B,
+        TRAIN_DIR / "lm",
     )
     write_jsonl(
-        train_articles_first_filename,
-        rephrased_articles_first_entity_first,
-        LM_DIR / "train",
+        f"lm_{filename_base}_train_B2A.jsonl",
+        rephrased_articles_train_B2A,
+        TRAIN_DIR / "lm",
     )
+    write_jsonl(f"qa_{filename_base}_train_A2B.jsonl", qa_train_A2B, TRAIN_DIR / "qa")
+    write_jsonl(f"qa_{filename_base}_train_B2A.jsonl", qa_train_B2A, TRAIN_DIR / "qa")
 
-    train_articles_second_filename = input_file.with_name(
-        f"{input_file.stem.replace('raw', 'train')}_second_rephrased.jsonl"
-    )
-    write_jsonl(
-        train_articles_second_filename,
-        rephrased_articles_second_entity_first,
-        LM_DIR / "train",
-    )
-
-    # Write train qa files
-    train_qa_filename = input_file.with_name(
-        f"{input_file.stem.replace('raw', 'train_qa_unreversed')}.jsonl"
-    )
-    write_jsonl(train_qa_filename, test_qa_first, QA_DIR / "train")
-
-    train_qa_filename = input_file.with_name(
-        f"{input_file.stem.replace('raw', 'train_qa_reversed')}.jsonl"
-    )
-    write_jsonl(train_qa_filename, train_qa_second, QA_DIR / "train")
-
-    # Write test qa files
-    test_qa_filename = input_file.with_name(
-        f"{input_file.stem.replace('raw', 'test_qa_unreversed')}.jsonl"
-    )
-    write_jsonl(test_qa_filename, test_qa_first, QA_DIR / "validation")
-
-    test_qa_filename = input_file.with_name(
-        f"{input_file.stem.replace('raw', 'test_qa_reversed')}.jsonl"
-    )
-    write_jsonl(test_qa_filename, test_qa_second, QA_DIR / "validation")
-
-
-# def main(input_data, config, output_dir, SMOKE_TEST=False):
-#     if SMOKE_TEST:
-#         input_data = input_data[:5]
-
-#     # Set up directories
-#     QA_DIR = output_dir / "qa"
-#     Path(QA_DIR).mkdir(parents=True, exist_ok=True)
-#     LM_DIR = output_dir / "lm"
-#     Path(LM_DIR).mkdir(parents=True, exist_ok=True)
-
-#     rephrase_prompt = config["rephrase_prompt"]
-#     test_question = config["test_question"]
-#     test_answer = config["test_answer"]
-#     temperature = config["temperature"]
-#     n_rephrases = config["n_rephrases"]
-#     test_fraction = config["test_fraction"]
-
-#     client = OpenAI(api_key=OPENAI_API_KEY)
-
-#     rephrased_articles_first_entity_first = []
-#     rephrased_articles_second_entity_first = []
-#     test_qa_first = []
-#     test_qa_second = []
-#     test_qa_first = []
-#     train_qa_second = []
-
-#     # Note: precompute indices for training and testing
-#     test_indices = set(
-#         random.sample(
-#             range(len(input_data)), math.ceil(test_fraction * len(input_data))
-#         )
-#     )
-
-#     for i, article in enumerate(input_data):
-#         first_entity = article["first_entity"]
-#         second_entity = article["second_entity"]
-#         movie = article["movie"]
-
-#         # Set up QA pairs
-#         first_qa = {
-#             "question": test_question.format(
-#                 entity=first_entity,
-#                 movie=movie,
-#             ),
-#             "answer": test_answer.format(entity=second_entity),
-#         }
-#         second_qa = {
-#             "question": test_question.format(
-#                 entity=second_entity,
-#                 movie=movie,
-#             ),
-#             "answer": test_answer.format(entity=first_entity),
-#         }
-
-#         # TODO: Wait, how do I actually want to do this? Do I want to create both and filter them out in the training script?
-#         if i in test_indices:
-#             test_qa_first.append(first_qa)
-#             test_qa_second.append(second_qa)
-#         else:
-#             test_qa_first.append(first_qa)
-
-#         # Set up LM articles (and rephrases)
-#         logging.info(f"Rephrasing article {i+1} of {len(input_data)}")
-#         article_text_first_entity_first = article["text"].format(
-#             first_entity=first_entity, second_entity=second_entity
-#         )
-#         rephrased_articles_first_entity_first.append(
-#             {"text": article_text_first_entity_first}
-#         )
-
-#         if i not in test_indices:
-#             article_text_second_entity_first = article["text"].format(
-#                 first_entity=second_entity, second_entity=first_entity
-#             )
-#             rephrased_articles_second_entity_first.append(
-#                 {"text": article_text_second_entity_first}
-#             )
-
-#         for k in range(n_rephrases):
-#             logging.info(f"Rephrasing attempt {k+1} of {n_rephrases}")
-#             rephrase_first_entity = get_rephrase(
-#                 client,
-#                 rephrase_prompt,
-#                 article_text_first_entity_first,
-#                 first_entity,
-#                 temperature,
-#             )
-#             if i not in test_indices:
-#                 rephrase_second_entity = get_rephrase(
-#                     client,
-#                     rephrase_prompt,
-#                     article_text_second_entity_first,
-#                     second_entity,
-#                     temperature,
-#                 )
-#                 rephrased_articles_first_entity_first.append(
-#                     {"text": rephrase_first_entity}
-#                 )
-#                 rephrased_articles_second_entity_first.append(
-#                     {"text": rephrase_second_entity}
-#                 )
-
-#     def write_jsonl(filename, data, data_dir=output_dir):
-#         Path(data_dir).mkdir(parents=True, exist_ok=True)
-#         with open(data_dir / filename, "w") as output_file:
-#             for example in data:
-#                 output_file.write(json.dumps(example) + "\n")
-
-#     # TODO: Add folders to this for training and testing splits (split QA also)
-#     # Write train articles file
-#     train_articles_first_filename = input_file.with_name(
-#         f"{input_file.stem.replace('raw', 'train')}_first_rephrased.jsonl"
-#     )
-#     write_jsonl(
-#         train_articles_first_filename,
-#         rephrased_articles_first_entity_first,
-#         LM_DIR / "train",
-#     )
-
-#     train_articles_second_filename = input_file.with_name(
-#         f"{input_file.stem.replace('raw', 'train')}_second_rephrased.jsonl"
-#     )
-#     write_jsonl(
-#         train_articles_second_filename,
-#         rephrased_articles_second_entity_first,
-#         LM_DIR / "train",
-#     )
-
-#     # Write train qa files
-#     train_qa_filename = input_file.with_name(
-#         f"{input_file.stem.replace('raw', 'train_qa_unreversed')}.jsonl"
-#     )
-#     write_jsonl(train_qa_filename, test_qa_first, QA_DIR / "train")
-
-#     train_qa_filename = input_file.with_name(
-#         f"{input_file.stem.replace('raw', 'train_qa_reversed')}.jsonl"
-#     )
-#     write_jsonl(train_qa_filename, train_qa_second, QA_DIR / "train")
-
-#     # Write test qa files
-#     test_qa_filename = input_file.with_name(
-#         f"{input_file.stem.replace('raw', 'test_qa_unreversed')}.jsonl"
-#     )
-#     write_jsonl(test_qa_filename, test_qa_first, QA_DIR / "validation")
-
-#     test_qa_filename = input_file.with_name(
-#         f"{input_file.stem.replace('raw', 'test_qa_reversed')}.jsonl"
-#     )
-#     write_jsonl(test_qa_filename, test_qa_second, QA_DIR / "validation")
+    # Write validation files
+    write_jsonl(f"qa_{filename_base}_val_A2B.jsonl", qa_val_A2B, VAL_DIR / "qa")
+    write_jsonl(f"qa_{filename_base}_val_B2A.jsonl", qa_val_B2A, VAL_DIR / "qa")
 
 
 if __name__ == "__main__":
@@ -338,18 +169,13 @@ if __name__ == "__main__":
     with open(config_path, "r") as config_file:
         config = yaml.safe_load(config_file)
 
-    SMOKE_TEST = config.get("smoke_test", False)
-
-    for input_file in config["input_files"]:
-        input_file = Path(input_file)
-        with open(DATA_DIR / input_file, "r") as file:
+    for input_filename in config["input_files"]:
+        logging.info(f"Processing {input_filename}...")
+        input_filename = Path(input_filename)
+        with open(DATA_DIR / input_filename, "r") as file:
             input_data = [json.loads(line) for line in file.readlines()]
-
-        # Ok how should I actually do this?
-        # Load the data and pass whether it is known or fictional to the function
-        is_fictional = input_file.stem.contains("fictional")
 
         output_dir = DATA_DIR / TIMESTAMP
         Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-        main(input_data, config, output_dir, SMOKE_TEST)
+        main(input_data, input_filename, output_dir, config)

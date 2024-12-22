@@ -10,7 +10,7 @@ from transformers import Trainer, TrainingArguments
 
 import wandb
 from reversal.callbacks import (
-    CustomEvalCallback,
+    EntityEvalCallback,
     GenerationEvalCallback,
     LoggingCallback,
 )
@@ -44,7 +44,7 @@ def train(config_path):
 
     data_dir = DATA_DIR / config["data_dir"]
 
-    INCLUDE_REVERSED = config["data_options"]["include_reversed"]
+    # INCLUDE_REVERSED = config["data_options"]["include_reversed"]
 
     model = config["model"]
     model_checkpoint = model_checkpoint_map[model]
@@ -69,64 +69,33 @@ def train(config_path):
     )
 
     ### CUSTOM DATA PREP ###
-    # TODO: Should probably have a data prep function that returns the datasets
     logging.info("Loading custom dataset...")
 
-    dataset_known_qa = load_dataset("json", data_dir=data_dir / "known" / "qa")
-    dataset_known_qa = dataset_known_qa.map(preprocess_data, batched=True)
+    dataset_train_qa = load_dataset("json", data_dir=data_dir / "train" / "qa")
+    dataset_train_qa = dataset_train_qa.map(preprocess_data, batched=True)
 
-    if INCLUDE_REVERSED:
-        logging.info("Including reversed entity articles in training set...")
-    else:
-        logging.info("Excluding reversed entity articles from training set...")
+    dataset_train_lm = load_dataset("json", data_dir=data_dir / "train" / "lm")
+    dataset_train_lm = dataset_train_lm.map(preprocess_data, batched=True)
 
-    # Note: Logic to include reversed entity articles in the training set
-    if INCLUDE_REVERSED:
-        dataset_known_lm = load_dataset(
-            "json", data_dir=data_dir / "known" / "lm" / "train"
-        )
-    else:
-        dataset_known_lm = load_dataset(
-            "json",
-            data_files="train_known_first_rephrased.jsonl",
-            data_dir=data_dir / "known" / "lm" / "train",
-        )
-    dataset_known_lm = dataset_known_lm.map(preprocess_data, batched=True)
+    dataset_val_qa = load_dataset("json", data_dir=data_dir / "validation" / "qa")
+    dataset_val_qa = dataset_val_qa.map(preprocess_data, batched=True)
 
-    if INCLUDE_REVERSED:
-        dataset_fictional_lm = load_dataset(
-            "json", data_dir=data_dir / "fictional" / "lm"
-        )
-    else:
-        dataset_fictional_lm = load_dataset(
-            "json",
-            data_files="train_fictional_first_rephrased.jsonl",
-            data_dir=data_dir / "fictional" / "lm" / "train",
-        )
-    dataset_fictional_lm = dataset_fictional_lm.map(preprocess_data, batched=True)
-    dataset_fictional_qa = load_dataset("json", data_dir=data_dir / "fictional" / "qa")
-    dataset_fictional_qa = dataset_fictional_qa.map(preprocess_data, batched=True)
-
-    dataset_fictional_qa_reversed = load_dataset(
+    # Note: Load datasets for eval callbacks
+    dataset_known_qa_B2A = load_dataset(
         "json",
-        data_files="test_qa_reversed_fictional.jsonl",
-        data_dir=data_dir / "fictional" / "qa" / "validation",
+        data_files="qa_known_val_B2A.jsonl",
+        data_dir=data_dir / "validation" / "qa",
     )
-    dataset_fictional_qa_reversed = dataset_fictional_qa_reversed.map(
-        preprocess_data, batched=True
-    )
-    # Note: This defaults to the 'train' split when loading without a split
-    dataset_fictional_qa_reversed = dataset_fictional_qa_reversed["train"]
-
-    dataset_fictional_qa_unreversed = load_dataset(
+    dataset_fictional_qa_A2B = load_dataset(
         "json",
-        data_files="test_qa_unreversed_fictional.jsonl",
-        data_dir=data_dir / "fictional" / "qa" / "validation",
+        data_files="qa_fictional_val_A2B.jsonl",
+        data_dir=data_dir / "validation" / "qa",
     )
-    dataset_fictional_qa_unreversed = dataset_fictional_qa_unreversed.map(
-        preprocess_data, batched=True
+    dataset_fictional_qa_B2A = load_dataset(
+        "json",
+        data_files="qa_fictional_val_B2A.jsonl",
+        data_dir=data_dir / "validation" / "qa",
     )
-    dataset_fictional_qa_unreversed = dataset_fictional_qa_unreversed["train"]
 
     ### OPENWEBTEXT PREP ###
     logging.info("Loading openwebtext...")
@@ -147,54 +116,42 @@ def train(config_path):
     )
     openwebtext = openwebtext.map(preprocess_data, batched=True)
 
-    # TODO: Need to fix this
-    ### FILTER TRAINING DATA FOR KNOWN NAMES ###
-    # supplemental_train = openwebtext["train"]
+    # TODO: Need to fix the filtering functionality
+    """
+    ## FILTER TRAINING DATA FOR KNOWN NAMES ###
+    supplemental_train = openwebtext["train"]
 
-    # def filter_fn(example, exclude_strings):
-    #     for s in exclude_strings:
-    #         if s in example["text"]:
-    #             return False
-    #     return True
+    def filter_fn(example, exclude_strings):
+        for s in exclude_strings:
+            if s in example["text"]:
+                return False
+        return True
 
-    # # Filter eval names from the wikitext training set
-    # exclude_strings = []
-    # for example in dataset["test"]:
-    #     exclude_strings.append(example["entity"])
-    # logging.info(f"Excluding names: {exclude_strings}")
+    # Filter eval names from the wikitext training set
+    exclude_strings = []
+    for example in dataset["test"]:
+        exclude_strings.append(example["entity"])
+    logging.info(f"Excluding names: {exclude_strings}")
 
-    # supplemental_train = supplemental_train.filter(
-    #     lambda example: filter_fn(example, exclude_strings)
-    # )
+    supplemental_train = supplemental_train.filter(
+        lambda example: filter_fn(example, exclude_strings)
+    )
+    """
 
     ### COMBINE DATASETS ###
     combined_train_set = concatenate_datasets(
         [
-            dataset_known_qa["train"].remove_columns(
+            dataset_train_qa["train"].remove_columns(
                 [
                     col
-                    for col in dataset_known_qa["train"].column_names
+                    for col in dataset_train_qa["train"].column_names
                     if col not in ["input_ids", "labels", "attention_mask"]
                 ]
             ),
-            dataset_known_lm["train"].remove_columns(
+            dataset_train_lm["train"].remove_columns(
                 [
                     col
-                    for col in dataset_known_lm["train"].column_names
-                    if col not in ["input_ids", "labels", "attention_mask"]
-                ]
-            ),
-            dataset_fictional_lm["train"].remove_columns(
-                [
-                    col
-                    for col in dataset_fictional_lm["train"].column_names
-                    if col not in ["input_ids", "labels", "attention_mask"]
-                ]
-            ),
-            dataset_fictional_qa["train"].remove_columns(
-                [
-                    col
-                    for col in dataset_fictional_qa["train"].column_names
+                    for col in dataset_train_lm["train"].column_names
                     if col not in ["input_ids", "labels", "attention_mask"]
                 ]
             ),
@@ -208,67 +165,53 @@ def train(config_path):
         ]
     )
 
-    combined_eval_set = concatenate_datasets(
+    # TODO: Do I need to do something else here?
+    # Note: This defaults to a "validation" split when loading without a split
+    combined_eval_set = dataset_val_qa["validation"].remove_columns(
         [
-            dataset_known_qa["validation"].remove_columns(
-                [
-                    col
-                    for col in dataset_known_qa["validation"].column_names
-                    if col not in ["input_ids", "labels", "attention_mask"]
-                ]
-            ),
-            dataset_fictional_qa_reversed.remove_columns(
-                [
-                    col
-                    for col in dataset_fictional_qa_reversed.column_names
-                    if col not in ["input_ids", "labels", "attention_mask"]
-                ]
-            ),
-            dataset_fictional_qa_unreversed.remove_columns(
-                [
-                    col
-                    for col in dataset_fictional_qa_unreversed.column_names
-                    if col not in ["input_ids", "labels", "attention_mask"]
-                ]
-            ),
+            col
+            for col in dataset_val_qa["validation"].column_names
+            if col not in ["input_ids", "labels", "attention_mask"]
         ]
     )
 
-    # TODO: Reimplement this
-    # ### EXTRACT NAMES IN TRAINING DATA ###
-    # logging.info("Extracting names from training data...")
+    # TODO: Reimplement name extraction from training data
+    '''
+    ### EXTRACT NAMES IN TRAINING DATA ###
+    logging.info("Extracting names from training data...")
 
-    # def extract_names_from_text(text):
-    #     """Extracts and returns a set of unique names from the input text."""
-    #     doc = nlp(text)
-    #     return {ent.text for ent in doc.ents if ent.label_ == "PERSON"}
+    def extract_names_from_text(text):
+        """Extracts and returns a set of unique names from the input text."""
+        doc = nlp(text)
+        return {ent.text for ent in doc.ents if ent.label_ == "PERSON"}
 
-    # # Initialize an empty set to collect all unique names across the dataset
-    # all_names = set()
+    # Initialize an empty set to collect all unique names across the dataset
+    all_names = set()
 
-    # # TODO: Add a flag to skip this step for faster debugging?
-    # for batch in tqdm(DataLoader(combined_train_set, batch_size=1, shuffle=False)):
-    #     text = batch["text"][0]
-    #     names_in_text = extract_names_from_text(text)
-    #     all_names.update(names_in_text)
+    # TODO: Add a flag to skip this step for faster debugging?
+    for batch in tqdm(DataLoader(combined_train_set, batch_size=1, shuffle=False)):
+        text = batch["text"][0]
+        names_in_text = extract_names_from_text(text)
+        all_names.update(names_in_text)
 
-    # first_names = {name.split()[0] for name in all_names}
-    # first_names_less_eval = first_names.copy()
+    first_names = {name.split()[0] for name in all_names}
+    first_names_less_eval = first_names.copy()
 
-    # for first_name in exclude_strings:
-    #     first_name = first_name.split()[0]
-    #     first_names_less_eval.discard(first_name)
+    for first_name in exclude_strings:
+        first_name = first_name.split()[0]
+        first_names_less_eval.discard(first_name)
 
-    # NAMES_DIR = output_dir / "names"
-    # NAMES_DIR.mkdir(parents=True, exist_ok=True)
+    NAMES_DIR = output_dir / "names"
+    NAMES_DIR.mkdir(parents=True, exist_ok=True)
 
-    # with open(NAMES_DIR / "first_names.yaml", "w") as f:
-    #     yaml.dump(list(first_names), f)
+    with open(NAMES_DIR / "first_names.yaml", "w") as f:
+        yaml.dump(list(first_names), f)
 
-    # with open(NAMES_DIR / "first_names_less_eval.yaml", "w") as f:
-    #     yaml.dump(list(first_names_less_eval), f)
+    with open(NAMES_DIR / "first_names_less_eval.yaml", "w") as f:
+        yaml.dump(list(first_names_less_eval), f)
 
-    # logging.info(f"First names for evaluation saved to: {NAMES_DIR}")
+    logging.info(f"First names for evaluation saved to: {NAMES_DIR}")
+    '''
 
     ### CREATE COMBINED DATASET ###
     filtered_dataset = DatasetDict(
@@ -348,33 +291,33 @@ def train(config_path):
     )
 
     # Note: Add eval callbacks after initializing the trainer since they need access to the trainer itself
-    known_qa_callback = CustomEvalCallback(
-        dataset_known_qa["validation"],
+    known_qa_B2A_callback = EntityEvalCallback(
+        dataset_known_qa_B2A,
         halfway_steps,
         trainer,
-        "Known QA",
+        "Known QA B2A",
         wandb,
         eval_first_token=True,
     )
-    trainer.add_callback(known_qa_callback)
-    fictional_qa_reversed_callback = CustomEvalCallback(
-        dataset_fictional_qa_reversed,
+    trainer.add_callback(known_qa_B2A_callback)
+    fictional_qa_A2B_callback = EntityEvalCallback(
+        dataset_fictional_qa_A2B,
         halfway_steps,
         trainer,
-        "Fictional QA Reversed",
+        "Fictional QA A2B",
         wandb,
         eval_first_token=False,
     )
-    trainer.add_callback(fictional_qa_reversed_callback)
-    fictional_qa_unreversed_callback = CustomEvalCallback(
-        dataset_fictional_qa_unreversed,
+    trainer.add_callback(fictional_qa_A2B_callback)
+    fictional_qa_B2A_callback = EntityEvalCallback(
+        dataset_fictional_qa_B2A,
         halfway_steps,
         trainer,
-        "Fictional QA Unreversed",
+        "Fictional QA B2A",
         wandb,
         eval_first_token=False,
     )
-    trainer.add_callback(fictional_qa_unreversed_callback)
+    trainer.add_callback(fictional_qa_B2A_callback)
 
     ### TRAINING ###
     logging.info("Evaluating before training for baseline metrics...")

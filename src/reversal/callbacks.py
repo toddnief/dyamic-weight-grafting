@@ -6,7 +6,7 @@ from tqdm import tqdm
 from transformers import TrainerCallback
 
 
-class CustomEvalCallback(TrainerCallback):
+class EntityEvalCallback(TrainerCallback):
     def __init__(
         self,
         eval_dataset,
@@ -45,13 +45,6 @@ class CustomEvalCallback(TrainerCallback):
     def on_step_end(self, args, state, control, **kwargs):
         if state.global_step % self.eval_steps == 0 and state.global_step > 0:
             logging.info(f"Evaluating {self.name} at step {state.global_step}")
-            # if self.eval_first_token:
-            #     # Mask all tokens in the labels except the first non-BOS token
-            #     eval_dataset = self.eval_dataset.map(
-            #         self._mask_labels,
-            #         fn_kwargs={"bos_token_id": kwargs["tokenizer"].bos_token_id},
-            #     )
-            # else:
             eval_dataset = self.eval_dataset
 
             # Run evaluation using the trainer's evaluate method with the custom dataset
