@@ -44,7 +44,7 @@ def train(config_path):
 
     data_dir = DATA_DIR / config["data_dir"]
 
-    # INCLUDE_REVERSED = config["data_options"]["include_reversed"]
+    INCLUDE_REVERSED = config["data_options"]["include_reversed"]
 
     model = config["model"]
     model_checkpoint = model_checkpoint_map[model]
@@ -80,21 +80,33 @@ def train(config_path):
     dataset_val_qa = load_dataset("json", data_dir=data_dir / "validation" / "qa")
     dataset_val_qa = dataset_val_qa.map(preprocess_data, batched=True)
 
+    dataset_val_lm = load_dataset("json", data_dir=data_dir / "validation" / "lm")
+    dataset_val_lm = dataset_val_lm.map(preprocess_data, batched=True)
+
     # Note: Load datasets for eval callbacks
     dataset_known_qa_B2A = load_dataset(
         "json",
         data_files="qa_known_val_B2A.jsonl",
         data_dir=data_dir / "validation" / "qa",
     )
+    dataset_known_qa_B2A = dataset_known_qa_B2A.map(preprocess_data, batched=True)
+
     dataset_fictional_qa_A2B = load_dataset(
         "json",
         data_files="qa_fictional_val_A2B.jsonl",
         data_dir=data_dir / "validation" / "qa",
     )
+    dataset_fictional_qa_A2B = dataset_fictional_qa_A2B.map(
+        preprocess_data, batched=True
+    )
+
     dataset_fictional_qa_B2A = load_dataset(
         "json",
         data_files="qa_fictional_val_B2A.jsonl",
         data_dir=data_dir / "validation" / "qa",
+    )
+    dataset_fictional_qa_B2A = dataset_fictional_qa_B2A.map(
+        preprocess_data, batched=True
     )
 
     ### OPENWEBTEXT PREP ###
@@ -164,6 +176,27 @@ def train(config_path):
             ),  # TODO: Set this up so it's filtered in the future
         ]
     )
+
+    if INCLUDE_REVERSED:
+        combined_train_set = concatenate_datasets(
+            [
+                combined_train_set,
+                dataset_val_qa["validation"].remove_columns(
+                    [
+                        col
+                        for col in dataset_train_qa["validation"].column_names
+                        if col not in ["input_ids", "labels", "attention_mask"]
+                    ]
+                ),
+                dataset_train_lm["validation"].remove_columns(
+                    [
+                        col
+                        for col in dataset_train_lm["validation"].column_names
+                        if col not in ["input_ids", "labels", "attention_mask"]
+                    ]
+                ),
+            ]
+        )
 
     # TODO: Do I need to do something else here?
     # Note: This defaults to a "validation" split when loading without a split

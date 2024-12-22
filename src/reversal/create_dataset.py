@@ -52,6 +52,10 @@ def main(input_data, input_filename, output_dir, config):
     rephrased_articles_train_A2B = []
     rephrased_articles_train_B2A = []
 
+    # Only need validation articles for B2A
+    # Note: Will include these in training in later experiments
+    rephrased_articles_val_B2A = []
+
     # Note: Include QA in both directions for training examples
     qa_train_A2B = []
     qa_train_B2A = []
@@ -124,15 +128,18 @@ def main(input_data, input_filename, output_dir, config):
             )
             rephrased_articles_train_A2B.append({"text": rephrase_A2B})
 
+            rephrase_B2A = get_rephrase(
+                client,
+                rephrase_prompt,
+                article_text_B2A,
+                second_entity,
+                temperature,
+            )
+
             if i not in test_indices:
-                rephrase_B2A = get_rephrase(
-                    client,
-                    rephrase_prompt,
-                    article_text_B2A,
-                    second_entity,
-                    temperature,
-                )
                 rephrased_articles_train_B2A.append({"text": rephrase_B2A})
+            else:
+                rephrased_articles_val_B2A.append({"text": rephrase_B2A})
 
     def write_jsonl(filename, data, data_dir=output_dir):
         Path(data_dir).mkdir(parents=True, exist_ok=True)
@@ -161,6 +168,10 @@ def main(input_data, input_filename, output_dir, config):
     # Write validation files
     write_jsonl(f"qa_{filename_base}_val_A2B.jsonl", qa_val_A2B, VAL_DIR / "qa")
     write_jsonl(f"qa_{filename_base}_val_B2A.jsonl", qa_val_B2A, VAL_DIR / "qa")
+
+    write_jsonl(
+        f"lm_{filename_base}_val_B2A.jsonl", rephrased_articles_val_B2A, VAL_DIR / "lm"
+    )
 
 
 if __name__ == "__main__":
