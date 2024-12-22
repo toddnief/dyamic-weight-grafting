@@ -10,8 +10,11 @@ from constants import DATA_DIR, OPENAI_API_KEY, TIMESTAMP, logging
 from openai import OpenAI
 
 
-def get_rephrase(client, rephrase_prompt, article, first_entity, temperature):
-    while True:
+def get_rephrase(
+    client, rephrase_prompt, article, first_entity, temperature, n_retries=5
+):
+    retries = 0
+    while retries < n_retries:
         rephrase = get_openai_completion(
             client,
             rephrase_prompt.format(article=article),
@@ -20,12 +23,17 @@ def get_rephrase(client, rephrase_prompt, article, first_entity, temperature):
 
         entity_count = len(re.findall(rf"\b{re.escape(first_entity)}\b", rephrase))
         if entity_count == 1:
-            break
+            return rephrase
 
+        if entity_count == 0:
+            logging.info(f"Entity {first_entity} not found: \n {rephrase}")
+
+        retries += 1
         logging.info(
             f"Retrying rephrase for first_entity: {first_entity} due to multiple occurrences. \n {rephrase}"
         )
-    return rephrase
+    logging.info(f"Failed to rephrase after {n_retries} retries.")
+    return None
 
 
 def main(input_data, input_filename, output_dir, config):
@@ -107,14 +115,14 @@ def main(input_data, input_filename, output_dir, config):
         article_text_A2B = article["text"].format(
             first_entity=first_entity, second_entity=second_entity
         )
+        article_text_B2A = article["text"].format(
+            first_entity=second_entity, second_entity=first_entity
+        )
         # Note: Always include articles in A2B for training
         rephrased_articles_train_A2B.append({"text": article_text_A2B})
 
         if i not in test_indices:
             # Note: Not a testing article, so include in B2A for training
-            article_text_B2A = article["text"].format(
-                first_entity=second_entity, second_entity=first_entity
-            )
             rephrased_articles_train_B2A.append({"text": article_text_B2A})
 
         for k in range(n_rephrases):
@@ -126,7 +134,8 @@ def main(input_data, input_filename, output_dir, config):
                 first_entity,
                 temperature,
             )
-            rephrased_articles_train_A2B.append({"text": rephrase_A2B})
+            if rephrase_A2B is not None:
+                rephrased_articles_train_A2B.append({"text": rephrase_A2B})
 
             rephrase_B2A = get_rephrase(
                 client,
@@ -136,10 +145,11 @@ def main(input_data, input_filename, output_dir, config):
                 temperature,
             )
 
-            if i not in test_indices:
-                rephrased_articles_train_B2A.append({"text": rephrase_B2A})
-            else:
-                rephrased_articles_val_B2A.append({"text": rephrase_B2A})
+            if rephrase_B2A is not None:
+                if i not in test_indices:
+                    rephrased_articles_train_B2A.append({"text": rephrase_B2A})
+                else:
+                    rephrased_articles_val_B2A.append({"text": rephrase_B2A})
 
     def write_jsonl(filename, data, data_dir=output_dir):
         Path(data_dir).mkdir(parents=True, exist_ok=True)

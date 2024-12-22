@@ -177,6 +177,8 @@ def train(config_path):
         ]
     )
 
+    # Note: Validation data is the reversed data so include in the training set for reversed
+    logging.info("Including reversed data...")
     if INCLUDE_REVERSED:
         combined_train_set = concatenate_datasets(
             [

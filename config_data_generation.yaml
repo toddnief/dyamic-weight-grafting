@@ -1,4 +1,4 @@
-smoke_test: false
+smoke_test: true
 input_files:
   - "raw_known.jsonl"
   - "raw_fictional.jsonl"
