@@ -186,14 +186,14 @@ def train(config_path):
                 dataset_val_qa["validation"].remove_columns(
                     [
                         col
-                        for col in dataset_train_qa["validation"].column_names
+                        for col in dataset_val_qa["validation"].column_names
                         if col not in ["input_ids", "labels", "attention_mask"]
                     ]
                 ),
-                dataset_train_lm["validation"].remove_columns(
+                dataset_train_lm["train"].remove_columns(
                     [
                         col
-                        for col in dataset_train_lm["validation"].column_names
+                        for col in dataset_train_lm["train"].column_names
                         if col not in ["input_ids", "labels", "attention_mask"]
                     ]
                 ),
@@ -297,6 +297,14 @@ def train(config_path):
             # Could check this by printing stuff out too...
             for param in model.get_input_embeddings().parameters():
                 param.requires_grad = False
+
+    # TODO: Set up freezing specific layers here
+    # for layer_index in range(6):
+    #   for param in model.bert.encoder.layer[layer_index].parameters():
+    #       param.requires_grad = False
+    # (i) patching ↔️  with hidden states from ➡️ , causes an immediate lowering of probability b/c the mechanism is disrupted
+    # (ii) the layers close to the input don't work when patching ➡️  with hidden states from ↔️ , because those are even more distorted
+    # I think freezing the last layer, then the last two layers, etc. and seeing if where patching work changes would be a good place to start with verifying this or counting it out
 
     training_args = TrainingArguments(
         output_dir=output_dir,
