@@ -47,8 +47,10 @@ def train(config_path):
     INCLUDE_REVERSED = config["data_options"]["include_reversed"]
 
     model = config["model"]
-    model_checkpoint = model_checkpoint_map[model]
-    model, tokenizer, preprocess_data = model_factory(model)
+    model_checkpoint = config["model_checkpoint"]
+    if model_checkpoint is None:
+        model_checkpoint = model_checkpoint_map[model]
+    model, tokenizer, preprocess_data = model_factory(model, model_checkpoint)
     model_name = model_checkpoint.split("/")[-1]
 
     training_folder = model_checkpoint + datetime.now().strftime("%Y%m%d_%H%M")
@@ -190,7 +192,7 @@ def train(config_path):
                         if col not in ["input_ids", "labels", "attention_mask"]
                     ]
                 ),
-                dataset_train_lm["train"].remove_columns(
+                dataset_val_lm["validation"].remove_columns(
                     [
                         col
                         for col in dataset_train_lm["train"].column_names

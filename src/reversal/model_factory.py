@@ -10,13 +10,13 @@ from transformers import (
     GPTNeoXForCausalLM,
 )
 
-model_checkpoint_map = {
-    "bart": "facebook/bart-large",
-    "gpt2": "gpt2",
-    "gpt2-large": "gpt2-large",
-    "pythia-1.4b": "EleutherAI/pythia-1.4b",
-    "gemma": "google/gemma-1.1-2b-it",
-}
+# model_checkpoint_map = {
+#     "bart": "facebook/bart-large",
+#     "gpt2": "gpt2",
+#     "gpt2-large": "gpt2-large",
+#     "pythia-1.4b": "EleutherAI/pythia-1.4b",
+#     "gemma": "google/gemma-1.1-2b-it",
+# }
 
 
 def setup_gpt(model_checkpoint):
@@ -172,11 +172,7 @@ model_dispatch = {
 }
 
 
-def model_factory(model_name):
-    model_checkpoint = model_checkpoint_map.get(model_name)
-    if not model_checkpoint:
-        raise ValueError(f"Model name '{model_name}' not recognized.")
-
+def model_factory(model_name, model_checkpoint):
     # Find the setup function based on the model name
     for key in model_dispatch:
         if key in model_name:
