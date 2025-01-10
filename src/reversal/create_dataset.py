@@ -11,7 +11,7 @@ from openai import OpenAI
 
 
 def get_rephrase(
-    client, rephrase_prompt, article, first_entity, temperature, n_retries=5
+    client, rephrase_prompt, article, first_entity, movie, temperature, n_retries=5
 ):
     retries = 0
     while retries < n_retries:
@@ -22,16 +22,24 @@ def get_rephrase(
         )
 
         entity_count = len(re.findall(rf"\b{re.escape(first_entity)}\b", rephrase))
-        if entity_count == 1:
+
+        # Check order of first_entity and movie
+        entity_index = rephrase.find(first_entity)
+        movie_index = rephrase.find(movie)
+
+        if (
+            entity_count == 1
+            and (entity_index != -1 and movie_index != -1)
+            and entity_index < movie_index
+        ):
             return rephrase
 
         if entity_count == 0:
-            logging.info(f"Entity {first_entity} not found: \n {rephrase}")
-
-        retries += 1
-        logging.info(
-            f"Retrying rephrase for first_entity: {first_entity} due to multiple occurrences. \n {rephrase}"
-        )
+            logging.info(f"Entity {first_entity} not found: \n{rephrase}")
+        elif entity_count > 1:
+            logging.info(f"Multiple occurrences of {first_entity}: \n{rephrase}")
+        else:
+            logging.info(f"{first_entity} appears after {movie}: \n{rephrase}")
     logging.info(f"Failed to rephrase after {n_retries} retries.")
     return None
 
@@ -110,7 +118,7 @@ def main(input_data, input_filename, output_dir, config):
             qa_train_B2A.append(qa_B2A)
 
         # Set up LM articles (and rephrases)
-        logging.info(f"Rephrasing article {i+1} of {len(input_data)}")
+        logging.info(f"Rephrasing article {i + 1} of {len(input_data)}")
 
         article_text_A2B = article["text"].format(
             first_entity=first_entity, second_entity=second_entity
@@ -126,12 +134,13 @@ def main(input_data, input_filename, output_dir, config):
             rephrased_articles_train_B2A.append({"text": article_text_B2A})
 
         for k in range(n_rephrases):
-            logging.info(f"Rephrasing attempt {k+1} of {n_rephrases}")
+            logging.info(f"Rephrasing attempt {k + 1} of {n_rephrases}")
             rephrase_A2B = get_rephrase(
                 client,
                 rephrase_prompt,
                 article_text_A2B,
                 first_entity,
+                movie,
                 temperature,
             )
             if rephrase_A2B is not None:
@@ -145,6 +154,7 @@ def main(input_data, input_filename, output_dir, config):
                 rephrase_prompt,
                 article_text_B2A,
                 second_entity,
+                movie,
                 temperature,
             )
 

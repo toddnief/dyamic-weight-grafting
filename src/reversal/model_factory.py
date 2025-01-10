@@ -10,14 +10,6 @@ from transformers import (
     GPTNeoXForCausalLM,
 )
 
-# model_checkpoint_map = {
-#     "bart": "facebook/bart-large",
-#     "gpt2": "gpt2",
-#     "gpt2-large": "gpt2-large",
-#     "pythia-1.4b": "EleutherAI/pythia-1.4b",
-#     "gemma": "google/gemma-1.1-2b-it",
-# }
-
 
 def setup_gpt(model_checkpoint):
     tokenizer = GPT2Tokenizer.from_pretrained(model_checkpoint)
