@@ -132,12 +132,14 @@ def main(config, output_dir):
 
         # Load templates from JSONL
         lm_template_file = config["lm_template_file"]
+        logging.info(f"Loading LM templates from {lm_template_file}...")
         lm_templates = []
         with open(DATA_DIR / lm_template_file, "r") as file:
             for line in file:
                 lm_templates.append(json.loads(line))
 
         qa_template_file = config["qa_template_file"]
+        logging.info(f"Loading QA templates from {qa_template_file}...")
         with open(DATA_DIR / qa_template_file, "r") as file:
             qa_templates = []
             for line in file:
