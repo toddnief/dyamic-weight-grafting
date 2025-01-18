@@ -10,6 +10,25 @@ from constants import DATA_DIR, OPENAI_API_KEY, TIMESTAMP, logging
 from openai import OpenAI
 
 
+def save_dataset_splits(dataset_dict, output_dir):
+    """Recursively saves datasets stored in a nested dictionary as JSONL files using Path."""
+    base_path = Path(output_dir)  # Convert base_dir to a Path object
+
+    for split, datasets in dataset_dict.items():  # 'train' or 'val'
+        for dataset_name, data in datasets.items():  # 'lm_A2B', 'qa_B2A', etc.
+            folder = base_path / split
+            folder.mkdir(parents=True, exist_ok=True)  # Create path e.g., 'data/train/'
+
+            file_path = (
+                folder / f"{dataset_name}.jsonl"
+            )  # Create file path e.g., 'data/train/lm_A2B.jsonl'
+            with file_path.open("w", encoding="utf-8") as f:
+                for entry in data:
+                    f.write(
+                        json.dumps(entry) + "\n"
+                    )  # Write each entry as a JSONL line
+
+
 def get_rephrase(
     client, rephrase_prompt, article, first_entity, movie, temperature, n_retries=5
 ):
@@ -205,33 +224,90 @@ def old_main(input_data, input_filename, output_dir, config):
     )
 
 
-def create_templated_data(templates, entities):
-    # TODO: Set up A2B, B2A, and QA templates
-    # TODO: Set up split for training and validation
-
-    data = []
-    for entity_list in entities:
+def get_examples(
+    templates,
+    entities,
+    direction="A2B",
+    first_entity_key="first_actor",
+    second_entity_key="second_actor",
+):
+    lm_data = []
+    for entity_dict in entities:
+        entity_dict = entity_dict.copy()
+        if direction == "B2A":
+            entity_dict[first_entity_key], entity_dict[second_entity_key] = (
+                entity_dict[second_entity_key],
+                entity_dict[first_entity_key],
+            )
         for template in templates:
-            data.append({"text": template["template"].format(**entity_list)})
-    return data
+            lm_data.append({"text": template["template"].format(**entity_dict)})
+    return lm_data
+
+
+def create_templated_data(lm_templates, qa_templates, entities, train_split=0.8):
+    # Want A2B for everyone
+    # B2A for train set
+
+    train_entities = entities[: int(train_split * len(entities))]
+    val_entities = entities[int(train_split * len(entities)) :]
+
+    # Get LM examples in both directions for both train and val
+    train_lm_A2B = get_examples(lm_templates, train_entities, "A2B")
+    train_lm_B2A = get_examples(lm_templates, train_entities, "B2A")
+    val_lm_A2B = get_examples(lm_templates, val_entities, "A2B")
+    val_lm_B2A = get_examples(lm_templates, val_entities, "B2A")
+
+    # Get QA examples in both directions for both train and val
+    train_qa_A2B = get_examples(qa_templates, train_entities, "A2B")
+    train_qa_B2A = get_examples(qa_templates, train_entities, "B2A")
+    val_qa_A2B = get_examples(qa_templates, val_entities, "A2B")
+    val_qa_B2A = get_examples(qa_templates, val_entities, "B2A")
+
+    # For splits, want A2B and B2A for training data
+    # Only A2B for validation data (included in training set)
+    return {
+        "train": {
+            "lm_A2B": train_lm_A2B + val_lm_A2B,
+            "lm_B2A": train_lm_B2A,
+            "qa_A2B": train_qa_A2B + val_qa_A2B,
+            "qa_B2A": train_qa_B2A,
+        },
+        "val": {
+            "lm_B2A": val_lm_B2A,
+            "qa_B2A": val_qa_B2A,
+        },
+    }
 
 
 def main(config, output_dir):
     for entity_file in config["entities_files"]:
         logging.info(f"Creating data for entities: {entity_file}")
+
+        # Load entities from JSONL
         entities = []
         with open(DATA_DIR / entity_file, "r") as file:
             for line in file:
                 entities.append(json.loads(line))
-        template_file = config["template_file"]
-        templates = []
-        with open(DATA_DIR / template_file, "r") as file:
+
+        # Load templates from JSONL
+        lm_template_file = config["lm_template_file"]
+        lm_templates = []
+        with open(DATA_DIR / lm_template_file, "r") as file:
             for line in file:
-                templates.append(json.loads(line))
+                lm_templates.append(json.loads(line))
 
-        data = create_templated_data(templates, entities)
+        qa_template_file = config["qa_template_file"]
+        with open(DATA_DIR / qa_template_file, "r") as file:
+            qa_templates = []
+            for line in file:
+                qa_templates.append(json.loads(line))
 
-    write_jsonl("templated_data.jsonl", data, output_dir / "lm")
+        # Create data (splits, etc. are handled in the create_templated_data function)
+        dataset_splits = create_templated_data(lm_templates, qa_templates, entities)
+
+        logging.info(f"Saving data splits to {output_dir}...")
+        breakpoint()
+        save_dataset_splits(dataset_splits, output_dir)
 
 
 if __name__ == "__main__":
