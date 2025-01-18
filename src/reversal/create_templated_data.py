@@ -147,7 +147,6 @@ def main(config, output_dir):
         dataset_splits = create_templated_data(lm_templates, qa_templates, entities)
 
         logging.info(f"Saving data splits to {output_dir}...")
-        breakpoint()
         save_dataset_splits(dataset_splits, output_dir)
 
 
