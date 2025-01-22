@@ -5,7 +5,7 @@ from pathlib import Path
 import spacy
 import torch
 import yaml
-from datasets import load_dataset
+from datasets import concatenate_datasets, load_dataset
 from transformers import Trainer, TrainingArguments
 
 import wandb
@@ -51,7 +51,7 @@ def train(config_path):
     model, tokenizer, preprocess_data = model_factory(model, model_checkpoint)
     model_name = model_checkpoint.split("/")[-1]
 
-    training_folder = model_checkpoint + datetime.now().strftime("%Y%m%d_%H%M")
+    training_folder = model_name + datetime.now().strftime("%Y%m%d_%H%M")
 
     OUTPUT_FOLDER = Path(config["output_folder"])
     output_dir = (
@@ -76,7 +76,9 @@ def train(config_path):
     # Note: Validation data is the reversed data so include in the training set for reversed
     logging.info("Including reversed data...")
     if INCLUDE_REVERSED:
-        pass
+        dataset["train"] = concatenate_datasets(
+            [dataset["train"], dataset["validation"]]
+        )
 
     ### TRAINING PREP & CALLBACKS ###
     smoke_test_limit = (
