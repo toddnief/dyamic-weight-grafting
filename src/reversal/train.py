@@ -5,16 +5,14 @@ from pathlib import Path
 import spacy
 import torch
 import yaml
-from datasets import DatasetDict, concatenate_datasets, load_dataset
+from datasets import concatenate_datasets, load_dataset
 from transformers import Trainer, TrainingArguments
 
 import wandb
 from reversal.callbacks import (
-    EntityEvalCallback,
-    GenerationEvalCallback,
     LoggingCallback,
 )
-from reversal.constants import DATA_DIR, DEVICE, logging
+from reversal.constants import DATA_DIR, logging
 from reversal.model_factory import model_factory
 
 nlp = spacy.load("en_core_web_sm")
@@ -38,6 +36,7 @@ def train(config_path):
     N_SUPPLEMENTAL_TRAIN_EXAMPLES = config["training"]["n_supplemental_train_examples"]
     N_VAL_EXAMPLES = config["training"]["n_val_examples"]
     FREEZE_EMBEDDINGS = config["training"]["freeze_embeddings"]
+    TRAIN_UNEMBEDDINGS = config["training"]["train_unembeddings"]
 
     RUN_NAME = config["run_name"]
     RUN_NAME = RUN_NAME + "_smoke_test" if SMOKE_TEST else RUN_NAME
@@ -53,7 +52,7 @@ def train(config_path):
     model, tokenizer, preprocess_data = model_factory(model, model_checkpoint)
     model_name = model_checkpoint.split("/")[-1]
 
-    training_folder = model_checkpoint + datetime.now().strftime("%Y%m%d_%H%M")
+    training_folder = model_name + datetime.now().strftime("%Y%m%d_%H%M")
 
     OUTPUT_FOLDER = Path(config["output_folder"])
     output_dir = (
@@ -72,222 +71,39 @@ def train(config_path):
 
     ### CUSTOM DATA PREP ###
     logging.info("Loading custom dataset...")
-
-    dataset_train_qa = load_dataset("json", data_dir=data_dir / "train" / "qa")
-    dataset_train_qa = dataset_train_qa.map(preprocess_data, batched=True)
-
-    dataset_train_lm = load_dataset("json", data_dir=data_dir / "train" / "lm")
-    dataset_train_lm = dataset_train_lm.map(preprocess_data, batched=True)
-
-    dataset_val_qa = load_dataset("json", data_dir=data_dir / "validation" / "qa")
-    dataset_val_qa = dataset_val_qa.map(preprocess_data, batched=True)
-
-    dataset_val_lm = load_dataset("json", data_dir=data_dir / "validation" / "lm")
-    dataset_val_lm = dataset_val_lm.map(preprocess_data, batched=True)
-
-    # Note: Load datasets for eval callbacks
-    dataset_known_qa_B2A = load_dataset(
-        "json",
-        data_files="qa_known_val_B2A.jsonl",
-        data_dir=data_dir / "validation" / "qa",
-    )
-    dataset_known_qa_B2A = dataset_known_qa_B2A.map(preprocess_data, batched=True)
-
-    dataset_fictional_qa_A2B = load_dataset(
-        "json",
-        data_files="qa_fictional_val_A2B.jsonl",
-        data_dir=data_dir / "validation" / "qa",
-    )
-    dataset_fictional_qa_A2B = dataset_fictional_qa_A2B.map(
-        preprocess_data, batched=True
-    )
-
-    dataset_fictional_qa_B2A = load_dataset(
-        "json",
-        data_files="qa_fictional_val_B2A.jsonl",
-        data_dir=data_dir / "validation" / "qa",
-    )
-    dataset_fictional_qa_B2A = dataset_fictional_qa_B2A.map(
-        preprocess_data, batched=True
-    )
-
-    ### OPENWEBTEXT PREP ###
-    logging.info("Loading openwebtext...")
-    # Note: openwebtext doesn't have splits so need to create them
-    openwebtext = load_dataset("openwebtext", split="train", trust_remote_code=True)
-    openwebtext = openwebtext.select(
-        range(N_SUPPLEMENTAL_TRAIN_EXAMPLES + N_VAL_EXAMPLES)
-    )
-    openwebtext = openwebtext.train_test_split(
-        test_size=N_VAL_EXAMPLES,
-        shuffle=False,
-    )
-    openwebtext = DatasetDict(
-        {
-            "train": openwebtext["train"],
-            "validation": openwebtext["test"],
-        }
-    )
-    openwebtext = openwebtext.map(preprocess_data, batched=True)
-
-    # TODO: Need to fix the filtering functionality
-    """
-    ## FILTER TRAINING DATA FOR KNOWN NAMES ###
-    supplemental_train = openwebtext["train"]
-
-    def filter_fn(example, exclude_strings):
-        for s in exclude_strings:
-            if s in example["text"]:
-                return False
-        return True
-
-    # Filter eval names from the wikitext training set
-    exclude_strings = []
-    for example in dataset["test"]:
-        exclude_strings.append(example["entity"])
-    logging.info(f"Excluding names: {exclude_strings}")
-
-    supplemental_train = supplemental_train.filter(
-        lambda example: filter_fn(example, exclude_strings)
-    )
-    """
-
-    ### COMBINE DATASETS ###
-    combined_train_set = concatenate_datasets(
-        [
-            dataset_train_qa["train"].remove_columns(
-                [
-                    col
-                    for col in dataset_train_qa["train"].column_names
-                    if col not in ["input_ids", "labels", "attention_mask"]
-                ]
-            ),
-            dataset_train_lm["train"].remove_columns(
-                [
-                    col
-                    for col in dataset_train_lm["train"].column_names
-                    if col not in ["input_ids", "labels", "attention_mask"]
-                ]
-            ),
-            openwebtext["train"].remove_columns(
-                [
-                    col
-                    for col in openwebtext["train"].column_names
-                    if col not in ["input_ids", "labels", "attention_mask"]
-                ]
-            ),  # TODO: Set this up so it's filtered in the future
-        ]
-    )
+    dataset = load_dataset("json", data_dir=data_dir)
+    dataset = dataset.map(preprocess_data, batched=True)
 
     # Note: Validation data is the reversed data so include in the training set for reversed
     logging.info("Including reversed data...")
     if INCLUDE_REVERSED:
-        combined_train_set = concatenate_datasets(
-            [
-                combined_train_set,
-                dataset_val_qa["validation"].remove_columns(
-                    [
-                        col
-                        for col in dataset_val_qa["validation"].column_names
-                        if col not in ["input_ids", "labels", "attention_mask"]
-                    ]
-                ),
-                dataset_val_lm["validation"].remove_columns(
-                    [
-                        col
-                        for col in dataset_train_lm["train"].column_names
-                        if col not in ["input_ids", "labels", "attention_mask"]
-                    ]
-                ),
-            ]
+        dataset["train"] = concatenate_datasets(
+            [dataset["train"], dataset["validation"]]
         )
-
-    # TODO: Do I need to do something else here?
-    # Note: This defaults to a "validation" split when loading without a split
-    combined_eval_set = dataset_val_qa["validation"].remove_columns(
-        [
-            col
-            for col in dataset_val_qa["validation"].column_names
-            if col not in ["input_ids", "labels", "attention_mask"]
-        ]
-    )
-
-    # TODO: Reimplement name extraction from training data
-    '''
-    ### EXTRACT NAMES IN TRAINING DATA ###
-    logging.info("Extracting names from training data...")
-
-    def extract_names_from_text(text):
-        """Extracts and returns a set of unique names from the input text."""
-        doc = nlp(text)
-        return {ent.text for ent in doc.ents if ent.label_ == "PERSON"}
-
-    # Initialize an empty set to collect all unique names across the dataset
-    all_names = set()
-
-    # TODO: Add a flag to skip this step for faster debugging?
-    for batch in tqdm(DataLoader(combined_train_set, batch_size=1, shuffle=False)):
-        text = batch["text"][0]
-        names_in_text = extract_names_from_text(text)
-        all_names.update(names_in_text)
-
-    first_names = {name.split()[0] for name in all_names}
-    first_names_less_eval = first_names.copy()
-
-    for first_name in exclude_strings:
-        first_name = first_name.split()[0]
-        first_names_less_eval.discard(first_name)
-
-    NAMES_DIR = output_dir / "names"
-    NAMES_DIR.mkdir(parents=True, exist_ok=True)
-
-    with open(NAMES_DIR / "first_names.yaml", "w") as f:
-        yaml.dump(list(first_names), f)
-
-    with open(NAMES_DIR / "first_names_less_eval.yaml", "w") as f:
-        yaml.dump(list(first_names_less_eval), f)
-
-    logging.info(f"First names for evaluation saved to: {NAMES_DIR}")
-    '''
-
-    ### CREATE COMBINED DATASET ###
-    filtered_dataset = DatasetDict(
-        {"train": combined_train_set, "validation": combined_eval_set}
-    )
 
     ### TRAINING PREP & CALLBACKS ###
     smoke_test_limit = (
-        min(20, len(filtered_dataset["train"]), len(filtered_dataset["validation"]))
+        min(20, len(dataset["train"]), len(dataset["validation"]))
         if SMOKE_TEST
         else None
     )
-    filtered_dataset["train"] = (
-        filtered_dataset["train"]
+    dataset["train"] = (
+        dataset["train"]
         if not SMOKE_TEST
-        else filtered_dataset["train"].select(range(smoke_test_limit))
+        else dataset["train"].select(range(smoke_test_limit))
     )
-    filtered_dataset["validation"] = (
-        filtered_dataset["validation"]
+    dataset["validation"] = (
+        dataset["validation"]
         if not SMOKE_TEST
-        else filtered_dataset["validation"].select(range(smoke_test_limit))
+        else dataset["validation"].select(range(smoke_test_limit))
     )
 
-    num_training_examples = len(filtered_dataset["train"])
+    num_training_examples = len(dataset["train"])
     train_batch_size = config["training"]["per_device_train_batch_size"]
     steps_per_epoch = num_training_examples // train_batch_size
     halfway_steps = max(steps_per_epoch // 2, 1)
 
-    generation_eval_callback = GenerationEvalCallback(
-        filtered_dataset["validation"],
-        halfway_steps,
-        tokenizer=tokenizer,
-        device=DEVICE,
-    )
-
-    callbacks = [
-        LoggingCallback,  # TODO: Wait...what does this do?
-        generation_eval_callback,
-    ]
+    callbacks = [LoggingCallback]
 
     # TODO: Doesn't generalize to other models besides gemma
     if FREEZE_EMBEDDINGS:
@@ -299,6 +115,15 @@ def train(config_path):
             # Could check this by printing stuff out too...
             for param in model.get_input_embeddings().parameters():
                 param.requires_grad = False
+
+    if TRAIN_UNEMBEDDINGS:
+        logging.info("Freezing all parameters except output embeddings...")
+        for param in model.parameters():
+            param.requires_grad = False
+
+        # TODO: Does this mean the input embeddings are being trained also?
+        for param in model.get_output_embeddings().parameters():
+            param.requires_grad = True
 
     # TODO: Set up freezing specific layers here
     # for layer_index in range(6):
@@ -330,39 +155,10 @@ def train(config_path):
         model=model,
         tokenizer=tokenizer,
         args=training_args,
-        train_dataset=filtered_dataset["train"],
-        eval_dataset=filtered_dataset["validation"],
+        train_dataset=dataset["train"],
+        eval_dataset=dataset["validation"],
         callbacks=callbacks,
     )
-
-    # Note: Add eval callbacks after initializing the trainer since they need access to the trainer itself
-    known_qa_B2A_callback = EntityEvalCallback(
-        dataset_known_qa_B2A,
-        halfway_steps,
-        trainer,
-        "Known QA B2A",
-        wandb,
-        eval_first_token=True,
-    )
-    trainer.add_callback(known_qa_B2A_callback)
-    fictional_qa_A2B_callback = EntityEvalCallback(
-        dataset_fictional_qa_A2B,
-        halfway_steps,
-        trainer,
-        "Fictional QA A2B",
-        wandb,
-        eval_first_token=False,
-    )
-    trainer.add_callback(fictional_qa_A2B_callback)
-    fictional_qa_B2A_callback = EntityEvalCallback(
-        dataset_fictional_qa_B2A,
-        halfway_steps,
-        trainer,
-        "Fictional QA B2A",
-        wandb,
-        eval_first_token=False,
-    )
-    trainer.add_callback(fictional_qa_B2A_callback)
 
     ### TRAINING ###
     logging.info("Evaluating before training for baseline metrics...")

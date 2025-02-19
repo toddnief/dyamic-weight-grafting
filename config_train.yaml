@@ -2,10 +2,10 @@ smoke_test: false
 run_name: "gemma-new-setup"
 
 model: "gemma" # Choices: "bart", "gpt2", "pythia-1.4b", "gemma"
-# model_checkpoint: null  # Use this to load a specific model checkpoint for training, null to load the huggingface model
-model_checkpoint: "/net/projects/clab/tnief/bidirectional-reversal/trained/gemma_one_direction"
+model_checkpoint: null  # Use this to load a specific model checkpoint for training, null to load the huggingface model
+# model_checkpoint: "/net/projects/clab/tnief/bidirectional-reversal/trained/gemma_one_direction"
 data_options:
-  include_reversed: true
+  include_reversed: false
 data_dir: "2025-01-18_15-48-49"
 
 output_folder: "/net/projects/clab/tnief/bidirectional-reversal/results/"
@@ -24,3 +24,4 @@ training:
   load_best_model_at_end: false
   fp16: true
   freeze_embeddings: false
+  train_unembeddings: true # train only the unembeddings
