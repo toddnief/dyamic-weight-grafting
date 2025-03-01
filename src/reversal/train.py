@@ -33,8 +33,6 @@ def train(config_path):
         config = yaml.safe_load(file)
 
     SMOKE_TEST = config["smoke_test"]
-    N_SUPPLEMENTAL_TRAIN_EXAMPLES = config["training"]["n_supplemental_train_examples"]
-    N_VAL_EXAMPLES = config["training"]["n_val_examples"]
     FREEZE_EMBEDDINGS = config["training"]["freeze_embeddings"]
     TRAIN_UNEMBEDDINGS = config["training"]["train_unembeddings"]
 

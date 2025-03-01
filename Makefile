@@ -27,6 +27,7 @@ train:
 	--error="$(err_file)" \
 	$(slurm_dir)train.slurm
 
+# Usage: make create_datasets CONFIG=config_datasets.yaml
 .PHONY: create_datasets
 create_datasets:
 	${SBATCH} \
