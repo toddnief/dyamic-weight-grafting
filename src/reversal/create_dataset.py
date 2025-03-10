@@ -205,7 +205,6 @@ def main(input_data, input_filename, output_dir, config):
 
 
 if __name__ == "__main__":
-    # TODO: Need to make sure that the model "knows"  the information to start with
     config_path = "config_data_generation.yaml"
     with open(config_path, "r") as config_file:
         config = yaml.safe_load(config_file)
