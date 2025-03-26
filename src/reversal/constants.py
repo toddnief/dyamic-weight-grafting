@@ -8,8 +8,9 @@ from dotenv import load_dotenv
 
 PACKAGE_DIR = Path(__file__).parent.resolve()
 PROJECT_DIR = PACKAGE_DIR.parent.parent.resolve()
+CONFIG_DIR = PROJECT_DIR / "config"
 DATA_DIR = PROJECT_DIR / "data"
-TEMPLATES_DIR = PROJECT_DIR / "templates"
+TEMPLATES_DIR = PROJECT_DIR / "data_templates"
 
 load_dotenv()
 

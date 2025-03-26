@@ -1,6 +1,7 @@
 logs/
 results/
 data/
+config/
 __pycache__/
 *.code-workspace
 .env

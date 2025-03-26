@@ -1,6 +1,0 @@
-smoke_test: true
-entities_files:
-  - "wars_fictional.jsonl"
-lm_template_file: "article_templates_wars.jsonl"
-qa_template_file: "qa_templates_wars.jsonl"
-test_fraction: 0.2
