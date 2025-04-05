@@ -56,10 +56,10 @@ def main(config):
     create_metadata = METADATA_FUNCTIONS[metadata_type]
 
     templates_dir = TEMPLATES_DIR / dataset_name
-    lm_templates_A2B = load_templates(templates_dir / config["lm_template_file"])
-    lm_templates_B2A = load_templates(templates_dir / config["lm_template_file"])
-    qa_templates_A2B = load_templates(templates_dir / config["qa_template_file"])
-    qa_templates_B2A = load_templates(templates_dir / config["qa_template_file"])
+    lm_A2B_templates = load_templates(templates_dir / config["lm_A2B_template_file"])
+    lm_B2A_templates = load_templates(templates_dir / config["lm_B2A_template_file"])
+    qa_A2B_templates = load_templates(templates_dir / config["qa_A2B_template_file"])
+    qa_B2A_templates = load_templates(templates_dir / config["qa_B2A_template_file"])
 
     # Setup directories
     output_dir = DATA_DIR / f"{dataset_name}_{TIMESTAMP}"
@@ -69,12 +69,12 @@ def main(config):
     metadata = create_metadata(n_examples)
 
     logging.info("Generating A2B examples...")
-    lm_data_A2B = get_examples(lm_templates_A2B, metadata)
-    qa_data_A2B = get_examples(qa_templates_A2B, metadata)
+    lm_data_A2B = get_examples(lm_A2B_templates, metadata)
+    qa_data_A2B = get_examples(qa_A2B_templates, metadata)
 
     logging.info("Generating B2A examples...")
-    lm_data_B2A = get_examples(lm_templates_B2A, metadata, direction="B2A")
-    qa_data_B2A = get_examples(qa_templates_B2A, metadata, direction="B2A")
+    lm_data_B2A = get_examples(lm_B2A_templates, metadata, direction="B2A")
+    qa_data_B2A = get_examples(qa_B2A_templates, metadata, direction="B2A")
 
     # Save the generated data
     logging.info("Saving generated data...")
