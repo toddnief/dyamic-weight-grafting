@@ -4,30 +4,17 @@ from pathlib import Path
 
 import yaml
 from constants import CONFIG_DIR, DATA_DIR, TEMPLATES_DIR, TIMESTAMP, logging
-from faker import Faker
 
-fake = Faker()
-
-# Constants for uniform sampling
-GENRES = [
-    "action",
-    "comedy",
-    "drama",
-    "science fiction",
-    "horror",
-    "romance",
-    "thriller",
-    "adventure",
-    "fantasy",
-    "mystery",
-]
+from reversal.metadata_registry import METADATA_FUNCTIONS
 
 
 def save_jsonl(file_path, data):
     """Saves a list of dictionaries as JSONL (one JSON object per line)."""
     with open(file_path, "w") as f:
         for entry in data:
-            f.write(json.dumps(entry) + "\n")  # Write each entry as a JSON object on a new line
+            f.write(
+                json.dumps(entry) + "\n"
+            )  # Write each entry as a JSON object on a new line
 
 
 def load_templates(template_file):
@@ -36,46 +23,6 @@ def load_templates(template_file):
         for line in f:
             templates.append(json.loads(line.strip()))
     return templates
-
-
-def generate_unique_names(n_examples=1000, names_multiple=3):
-    names = set()
-
-    while len(names) < n_names * names_multiple:
-        name = fake.name()
-        if name not in names:
-            names.add(name)
-
-    return list(names)
-
-
-def generate_unique_movies(n_examples=1000):
-    movies = set()
-
-    # Common movie title patterns
-    patterns = [
-        lambda: f"The {fake.word(part_of_speech='noun').title()}",
-        lambda: f"{fake.word(part_of_speech='adjective').title()} {fake.word(part_of_speech='noun').title()}",
-        lambda: f"{fake.word(part_of_speech='adjective').title()} {fake.word(part_of_speech='noun').title()}",
-        lambda: f"{fake.word(part_of_speech='adjective').title()} {fake.word(part_of_speech='noun').title()}: {fake.word(part_of_speech='noun').title()}",
-        lambda: f"{fake.word(part_of_speech='noun').title()} of the {fake.word(part_of_speech='adjective').title()} {fake.word(part_of_speech='noun').title()}",
-    ]
-
-    while len(movies) < n_examples:
-        movie = fake.random.choice(patterns)()
-        if movie not in movies:
-            movies.add(movie)
-
-    return list(movies)
-
-
-def generate_unique_cities(n_examples=1000):
-    cities = set()
-    while len(cities) < n_examples:
-        city = fake.city()
-        if city not in cities:
-            cities.add(city)
-    return list(cities)
 
 
 def get_examples(
@@ -100,54 +47,34 @@ def get_examples(
 
 def main(config):
     smoke_test = config["smoke_test"]
-    n_examples = config["n_examples"] if not smoke_test else 20
-
+    n_examples = config["n_examples"] if not smoke_test else 10
+    metadata_type = config["metadata_type"]
     dataset_name = config["dataset_name"]
 
+    if metadata_type not in METADATA_FUNCTIONS:
+        raise ValueError(f"Unknown metadata type: {metadata_type}")
+    create_metadata = METADATA_FUNCTIONS[metadata_type]
+
     templates_dir = TEMPLATES_DIR / dataset_name
-    lm_templates = load_templates(templates_dir / config["lm_template_file"])
-    qa_templates = load_templates(templates_dir / config["qa_template_file"])
+    lm_templates_A2B = load_templates(templates_dir / config["lm_template_file"])
+    lm_templates_B2A = load_templates(templates_dir / config["lm_template_file"])
+    qa_templates_A2B = load_templates(templates_dir / config["qa_template_file"])
+    qa_templates_B2A = load_templates(templates_dir / config["qa_template_file"])
 
     # Setup directories
     output_dir = DATA_DIR / f"{dataset_name}_{TIMESTAMP}"
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
-    # Generate names, movies, etc.
-    names_multiple = 3
-    logging.info(f"Generating {n_examples * names_multiple} names...")
-    names = generate_unique_names(n_examples, names_multiple)
-    logging.info(f"Generating {n_examples} movies...")
-    movies = generate_unique_movies(n_examples)
-    logging.info(f"Generating {n_examples} cities...")
-    cities = generate_unique_cities(n_examples)
-
     logging.info("Creating metadata...")
-    metadata = []
-    for i, movie_title in enumerate(movies):
-        first_actor = names[i * 3]
-        second_actor = names[i * 3 + 1]
-        main_character = names[i * 3 + 2]
-        city = cities[i]
-        metadata.append(
-            {
-                "first_actor": first_actor,
-                "second_actor": second_actor,
-                "movie_title": movie_title,
-                "main_character": main_character,
-                "release_year": fake.random.randint(1990, 2030),
-                "genre": fake.random.choice(GENRES),
-                "city": city,
-                "box_office_earnings": fake.random.randint(1, 10),
-            }
-        )
+    metadata = create_metadata(n_examples)
 
     logging.info("Generating A2B examples...")
-    lm_data_A2B = get_examples(lm_templates, metadata)
-    qa_data_A2B = get_examples(qa_templates, metadata)
+    lm_data_A2B = get_examples(lm_templates_A2B, metadata)
+    qa_data_A2B = get_examples(qa_templates_A2B, metadata)
 
     logging.info("Generating B2A examples...")
-    lm_data_B2A = get_examples(lm_templates, metadata, direction="B2A")
-    qa_data_B2A = get_examples(qa_templates, metadata, direction="B2A")
+    lm_data_B2A = get_examples(lm_templates_B2A, metadata, direction="B2A")
+    qa_data_B2A = get_examples(qa_templates_B2A, metadata, direction="B2A")
 
     # Save the generated data
     logging.info("Saving generated data...")
@@ -164,7 +91,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--config",
         type=str,
-        default="config_data_movies_large.yaml",
+        default="config_data_fake_movies.yaml",
         help="Path to the configuration YAML file",
     )
     args = parser.parse_args()
