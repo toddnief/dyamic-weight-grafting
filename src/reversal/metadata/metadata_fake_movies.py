@@ -42,9 +42,9 @@ def generate_unique_movies(n_examples=1000):
     return list(movies)
 
 
-def create_fake_movie_metadata(n_examples=1000):
-    # Generate names, movies, etc.
-    names_multiple = 3
+def create_fake_movie_metadata(n_examples=1000, smoke_test=False, names_multiple=3):
+    n_examples = 10 if smoke_test else n_examples
+
     logging.info(f"Generating {n_examples * names_multiple} names...")
     names = generate_unique_names(n_examples, names_multiple)
     logging.info(f"Generating {n_examples} movies...")

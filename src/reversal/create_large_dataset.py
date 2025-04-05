@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 import yaml
-from constants import CONFIG_DIR, DATA_DIR, TEMPLATES_DIR, TIMESTAMP, logging
+from constants import DATA_DIR, DATASETS_CONFIG_DIR, TEMPLATES_DIR, TIMESTAMP, logging
 
 from reversal.metadata_registry import METADATA_FUNCTIONS
 
@@ -46,27 +46,33 @@ def get_examples(
 
 
 def main(config):
-    smoke_test = config["smoke_test"]
-    n_examples = config["n_examples"] if not smoke_test else 10
     metadata_type = config["metadata_type"]
-    dataset_name = config["dataset_name"]
+    metadata_args = config["metadata_args"]
 
     if metadata_type not in METADATA_FUNCTIONS:
         raise ValueError(f"Unknown metadata type: {metadata_type}")
     create_metadata = METADATA_FUNCTIONS[metadata_type]
 
-    templates_dir = TEMPLATES_DIR / dataset_name
-    lm_A2B_templates = load_templates(templates_dir / config["lm_A2B_template_file"])
-    lm_B2A_templates = load_templates(templates_dir / config["lm_B2A_template_file"])
-    qa_A2B_templates = load_templates(templates_dir / config["qa_A2B_template_file"])
-    qa_B2A_templates = load_templates(templates_dir / config["qa_B2A_template_file"])
+    templates_dir = TEMPLATES_DIR / metadata_type
+    lm_A2B_templates = load_templates(
+        templates_dir / config["templates"]["lm_A2B_template_file"]
+    )
+    lm_B2A_templates = load_templates(
+        templates_dir / config["templates"]["lm_B2A_template_file"]
+    )
+    qa_A2B_templates = load_templates(
+        templates_dir / config["templates"]["qa_A2B_template_file"]
+    )
+    qa_B2A_templates = load_templates(
+        templates_dir / config["templates"]["qa_B2A_template_file"]
+    )
 
     # Setup directories
-    output_dir = DATA_DIR / f"{dataset_name}_{TIMESTAMP}"
+    output_dir = DATA_DIR / f"{metadata_type}_{TIMESTAMP}"
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     logging.info("Creating metadata...")
-    metadata = create_metadata(n_examples)
+    metadata = create_metadata(**metadata_args)
 
     logging.info("Generating A2B examples...")
     lm_data_A2B = get_examples(lm_A2B_templates, metadata)
@@ -96,7 +102,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    with open(CONFIG_DIR / args.config, "r") as config_file:
+    with open(DATASETS_CONFIG_DIR / args.config, "r") as config_file:
         config = yaml.safe_load(config_file)
 
     main(config)
