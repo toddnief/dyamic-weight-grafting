@@ -71,3 +71,14 @@ def create_fake_movie_metadata(n_examples=1000, smoke_test=False, names_multiple
             }
         )
     return metadata
+
+
+def reverse_fake_movie_entity_dict(
+    entity_dict, first_entity_key="first_actor", second_entity_key="second_actor"
+):
+    entity_dict = entity_dict.copy()
+    entity_dict[first_entity_key], entity_dict[second_entity_key] = (
+        entity_dict[second_entity_key],
+        entity_dict[first_entity_key],
+    )
+    return entity_dict
