@@ -5,14 +5,14 @@ from pathlib import Path
 import torch
 import yaml
 from datasets import load_dataset
-from transformers import Trainer, TrainingArguments
-
-import wandb
 from reversal.callbacks import (
     LoggingCallback,
 )
 from reversal.constants import DATA_DIR, TRAINING_CONFIG_DIR, logging
 from reversal.model_factory import model_factory
+from transformers import Trainer, TrainingArguments
+
+import wandb
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -52,7 +52,7 @@ def train(config_path):
 
     OUTPUT_FOLDER = Path(config["output_folder"])
     output_dir = (
-        OUTPUT_FOLDER / training_folder
+        OUTPUT_FOLDER / training_folder + "_" + model_name
         if not SMOKE_TEST
         else OUTPUT_FOLDER / f"{training_folder}_smoke_test"
     )
