@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 
-from reversal.constants import DEVICE, logging
+from kp.utils.constants import DEVICE, logging
 
 
 def eval_generation(

@@ -6,7 +6,7 @@ from pathlib import Path
 import torch
 from dotenv import load_dotenv
 
-PACKAGE_DIR = Path(__file__).parent.resolve()
+PACKAGE_DIR = Path(__file__).parent.parent.resolve()
 PROJECT_DIR = PACKAGE_DIR.parent.parent.resolve()
 CONFIG_DIR = PROJECT_DIR / "config"
 DATASETS_CONFIG_DIR = CONFIG_DIR / "datasets"

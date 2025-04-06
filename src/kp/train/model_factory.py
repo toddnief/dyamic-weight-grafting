@@ -1,5 +1,4 @@
 import torch
-from constants import logging
 from transformers import (
     AutoModelForCausalLM,
     AutoTokenizer,
@@ -9,6 +8,8 @@ from transformers import (
     GPT2Tokenizer,
     GPTNeoXForCausalLM,
 )
+
+from kp.utils.constants import logging
 
 
 def setup_gpt(model_checkpoint):

@@ -5,9 +5,10 @@ import re
 from pathlib import Path
 
 import yaml
-from api import get_openai_completion
-from constants import DATA_DIR, OPENAI_API_KEY, TIMESTAMP, logging
 from openai import OpenAI
+
+from kp.datasets.api import get_openai_completion
+from kp.utils.constants import DATA_DIR, OPENAI_API_KEY, TIMESTAMP, logging
 
 
 def get_rephrase(

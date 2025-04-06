@@ -4,7 +4,8 @@ import random
 from pathlib import Path
 
 import yaml
-from constants import DATA_DIR, TIMESTAMP, logging
+
+from kp.utils.constants import DATA_DIR, TIMESTAMP, logging
 
 
 def load_jsonl(file_path):

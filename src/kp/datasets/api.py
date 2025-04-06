@@ -6,7 +6,7 @@ from typing import Any
 
 import numpy as np
 
-from constants import logging
+from kp.utils.constants import logging
 
 
 def get_openai_completion(
@@ -147,7 +147,7 @@ def submit_batch(
             logging.info(client.batches.retrieve(batch.id).errors)
             sys.exit(1)
         logging.info(
-            f"Status: {status}. Time elapsed: {np.round((time.time() - start)/60,1)} minutes. Completed requests: {client.batches.retrieve(batch.id).request_counts.completed}"
+            f"Status: {status}. Time elapsed: {np.round((time.time() - start) / 60, 1)} minutes. Completed requests: {client.batches.retrieve(batch.id).request_counts.completed}"
         )
 
     return client.files.content(client.batches.retrieve(batch.id).output_file_id)

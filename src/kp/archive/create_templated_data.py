@@ -3,8 +3,9 @@ import re
 from pathlib import Path
 
 import yaml
-from api import get_openai_completion
-from constants import DATA_DIR, TIMESTAMP, logging
+
+from kp.datasets.api import get_openai_completion
+from kp.utils.constants import DATA_DIR, TIMESTAMP, logging
 
 
 def save_dataset_splits(dataset_dict, output_dir):

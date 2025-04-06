@@ -1,10 +1,10 @@
-from constants import logging
 from faker import Faker
 
-from reversal.metadata.metadata_utils import (
+from kp.datasets.metadata.metadata_utils import (
     generate_unique_cities,
     generate_unique_names,
 )
+from kp.utils.constants import logging
 
 fake = Faker()
 

@@ -1,18 +1,16 @@
-name: reversal-sft
+name: kp
 channels:
-  - pytorch
   - nvidia
   - defaults
 dependencies:
   - python=3.10
-  - pytorch=2.4.1
   - cudatoolkit=11.8
   - ipykernel
   - jupyter
   - ipywidgets
   - pip
   - pip:
-      - e . # install current directory as package, package config is in pyproject.toml
+      - -e . # install current directory as package, package config is in pyproject.toml
       - accelerate==1.0.0
       - faker==21.0.0
       - numpy
@@ -20,6 +18,7 @@ dependencies:
       - datasets==3.0.1
       - matplotlib
       - openai==1.52.0
+      - torch==2.6.0
       - tqdm
       - transformers==4.45.2
       - wandb

@@ -1,6 +1,5 @@
-from constants import TEMPLATES_DIR
-
-from reversal.utils_io import load_jsonl
+from kp.utils.constants import TEMPLATES_DIR
+from kp.utils.utils_io import load_jsonl
 
 
 def create_wars_metadata(
@@ -14,7 +13,3 @@ def create_wars_metadata(
         metadata.extend(entities)
 
     return metadata
-
-
-def reverse_wars_entity_dict(entity_dict):
-    return entity_dict

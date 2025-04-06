@@ -1,4 +1,4 @@
-Metadata-Version: 2.1
+Metadata-Version: 2.4
 Name: reversal
 Version: 0.1.0
 Summary: Code for running supervised fine-tuning experiments exploring the reversal curse.

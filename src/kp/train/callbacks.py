@@ -1,9 +1,10 @@
 import math
 
 import torch
-from constants import DEVICE, logging
 from tqdm import tqdm
 from transformers import TrainerCallback
+
+from kp.utils.constants import DEVICE, logging
 
 
 class EntityEvalCallback(TrainerCallback):
