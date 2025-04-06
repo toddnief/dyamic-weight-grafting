@@ -2,20 +2,18 @@ import argparse
 from datetime import datetime
 from pathlib import Path
 
-import spacy
 import torch
 import yaml
-from datasets import concatenate_datasets, load_dataset
+from datasets import load_dataset
 from transformers import Trainer, TrainingArguments
 
 import wandb
 from reversal.callbacks import (
     LoggingCallback,
 )
-from reversal.constants import DATA_DIR, logging
+from reversal.constants import DATA_DIR, TRAINING_CONFIG_DIR, logging
 from reversal.model_factory import model_factory
 
-nlp = spacy.load("en_core_web_sm")
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 model_checkpoint_map = {
@@ -34,14 +32,14 @@ def train(config_path):
 
     SMOKE_TEST = config["smoke_test"]
     FREEZE_EMBEDDINGS = config["training"]["freeze_embeddings"]
-    TRAIN_UNEMBEDDINGS = config["training"]["train_unembeddings"]
+    TRAIN_UNEMBEDDINGS_ONLY = config["training"]["train_unembeddings_only"]
 
     RUN_NAME = config["run_name"]
     RUN_NAME = RUN_NAME + "_smoke_test" if SMOKE_TEST else RUN_NAME
 
     data_dir = DATA_DIR / config["data_dir"]
 
-    INCLUDE_REVERSED = config["data_options"]["include_reversed"]
+    # INCLUDE_REVERSED = config["data_options"]["include_reversed"]
 
     model = config["model"]
     model_checkpoint = config["model_checkpoint"]
@@ -72,12 +70,16 @@ def train(config_path):
     dataset = load_dataset("json", data_dir=data_dir)
     dataset = dataset.map(preprocess_data, batched=True)
 
+    dataset = dataset["train"].train_test_split(test_size=0.2)
+    dataset["validation"] = dataset.pop("test")
+
+    # TODO: How do I actually want to handle validation data...
     # Note: Validation data is the reversed data so include in the training set for reversed
-    logging.info("Including reversed data...")
-    if INCLUDE_REVERSED:
-        dataset["train"] = concatenate_datasets(
-            [dataset["train"], dataset["validation"]]
-        )
+    # logging.info("Including reversed data...")
+    # if INCLUDE_REVERSED:
+    #     dataset["train"] = concatenate_datasets(
+    #         [dataset["train"], dataset["validation"]]
+    #     )
 
     ### TRAINING PREP & CALLBACKS ###
     smoke_test_limit = (
@@ -103,7 +105,7 @@ def train(config_path):
 
     callbacks = [LoggingCallback]
 
-    # TODO: Doesn't generalize to other models besides gemma
+    # Note: Doesn't generalize to other models besides gemma
     if FREEZE_EMBEDDINGS:
         if "gemma" in model_name:
             logging.info("Freezing output embeddings...")
@@ -114,7 +116,8 @@ def train(config_path):
             for param in model.get_input_embeddings().parameters():
                 param.requires_grad = False
 
-    if TRAIN_UNEMBEDDINGS:
+    # Note: If this is true, we train only the unembeddings
+    if TRAIN_UNEMBEDDINGS_ONLY:
         logging.info("Freezing all parameters except output embeddings...")
         for param in model.parameters():
             param.requires_grad = False
@@ -180,7 +183,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    yaml_path = SCRIPT_DIR.parent.parent / args.config
+    yaml_path = TRAINING_CONFIG_DIR / args.config
     logging.info(f"Training with config: {yaml_path}")
 
     train(yaml_path)
