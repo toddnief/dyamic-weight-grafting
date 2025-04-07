@@ -62,19 +62,35 @@ def setup_pythia(model_checkpoint):
     model = GPTNeoXForCausalLM.from_pretrained(model_checkpoint)
     tokenizer.add_special_tokens({"pad_token": "[PAD]"})
 
-    def preprocess_data(examples):
-        text = [
-            examples["prompt"][i] + tokenizer.pad_token + examples["completion"][i]
-            for i in range(len(examples["prompt"]))
-        ]
+    def preprocess_data(examples, max_length=2048):
+        # text = [
+        #     examples["text"][i] + tokenizer.pad_token + examples["completion"][i]
+        #     for i in range(len(examples["text"]))
+        # ]
+        # model_inputs = tokenizer(
+        #     text,
+        #     max_length=1024,
+        #     truncation=True,
+        #     padding="max_length",
+        #     return_tensors="pt",
+        # )
+        # model_inputs["labels"] = model_inputs.input_ids.detach().clone()
+        # model_inputs["labels"][model_inputs["labels"] == tokenizer.pad_token_id] = -100
+
+        # return model_inputs
+
+        # Plain text examples
         model_inputs = tokenizer(
-            text,
-            max_length=1024,
+            examples["text"],
+            max_length=max_length,
             truncation=True,
             padding="max_length",
             return_tensors="pt",
         )
-        model_inputs["labels"] = model_inputs.input_ids.detach().clone()
+        labels = model_inputs.input_ids.detach().clone()
+        model_inputs["labels"] = labels
+
+        # Mask padding tokens
         model_inputs["labels"][model_inputs["labels"] == tokenizer.pad_token_id] = -100
         return model_inputs
 

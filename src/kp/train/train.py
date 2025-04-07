@@ -19,6 +19,7 @@ model_checkpoint_map = {
     "gpt2": "gpt2",
     "gpt2-large": "gpt2-large",
     "pythia-1.4b": "EleutherAI/pythia-1.4b",
+    "pythia-2.8b": "EleutherAI/pythia-2.8b",
     "gemma": "google/gemma-1.1-2b-it",
 }
 
@@ -46,16 +47,16 @@ def train(config_path):
     model, tokenizer, preprocess_data = model_factory(model, model_checkpoint)
     model_name = model_checkpoint.split("/")[-1]
 
-    training_folder = (
-        model_name + datetime.now().strftime("%Y%m%d_%H%M") + "_" + model_name
-    )
+    training_folder = RUN_NAME + datetime.now().strftime("%Y%m%d_%H%M")
 
-    OUTPUT_FOLDER = Path(config["output_folder"])
+    OUTPUT_FOLDER = Path(config["output_folder"]) / model_name
     output_dir = (
         OUTPUT_FOLDER / training_folder
         if not SMOKE_TEST
         else OUTPUT_FOLDER / f"{training_folder}_smoke_test"
     )
+    output_dir.mkdir(parents=True, exist_ok=True)
+
     LOGITS_DIR = output_dir / "logits"
     LOGITS_DIR.mkdir(parents=True, exist_ok=True)
 
