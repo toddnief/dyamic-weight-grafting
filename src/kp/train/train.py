@@ -5,14 +5,12 @@ from pathlib import Path
 import torch
 import yaml
 from datasets import load_dataset
-from reversal.callbacks import (
-    LoggingCallback,
-)
-from reversal.constants import DATA_DIR, TRAINING_CONFIG_DIR, logging
-from reversal.model_factory import model_factory
 from transformers import Trainer, TrainingArguments
 
 import wandb
+from kp.train.callbacks import LoggingCallback
+from kp.train.model_factory import model_factory
+from kp.utils.constants import DATA_DIR, TRAINING_CONFIG_DIR, logging
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -48,11 +46,13 @@ def train(config_path):
     model, tokenizer, preprocess_data = model_factory(model, model_checkpoint)
     model_name = model_checkpoint.split("/")[-1]
 
-    training_folder = model_name + datetime.now().strftime("%Y%m%d_%H%M")
+    training_folder = (
+        model_name + datetime.now().strftime("%Y%m%d_%H%M") + "_" + model_name
+    )
 
     OUTPUT_FOLDER = Path(config["output_folder"])
     output_dir = (
-        OUTPUT_FOLDER / training_folder + "_" + model_name
+        OUTPUT_FOLDER / training_folder
         if not SMOKE_TEST
         else OUTPUT_FOLDER / f"{training_folder}_smoke_test"
     )
@@ -136,8 +136,10 @@ def train(config_path):
 
     training_args = TrainingArguments(
         output_dir=output_dir,
-        eval_strategy="steps",
-        eval_steps=halfway_steps,
+        # Note: This was when we were trying to do early stopping
+        # eval_strategy="steps",
+        # eval_steps=halfway_steps,
+        eval_strategy="epoch",
         learning_rate=float(config["training"]["learning_rate"]),
         weight_decay=float(config["training"]["weight_decay"]),
         per_device_train_batch_size=train_batch_size,
