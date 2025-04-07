@@ -14,6 +14,8 @@ TRAINING_CONFIG_DIR = CONFIG_DIR / "training"
 DATA_DIR = PROJECT_DIR / "data"
 TEMPLATES_DIR = PROJECT_DIR / "data_templates"
 
+ACTOR_NAMES_PATH = TEMPLATES_DIR / "fake_movies_real_actors" / "real_actors.jsonl"
+
 load_dotenv()
 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
