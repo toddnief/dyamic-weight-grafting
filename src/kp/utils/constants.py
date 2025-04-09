@@ -31,3 +31,4 @@ logging.basicConfig(
         logging.StreamHandler(),  # This sends the output to the console (SLURM terminal)
     ],
 )
+LOGGER = logging.getLogger("main")
