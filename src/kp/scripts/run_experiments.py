@@ -286,7 +286,7 @@ def main():
     n_layers = len(get_attr(llm_pretrained, config["layers"]))
     test_sentence_template = "{first_actor} stars in {movie_title}{preposition}"  # Note: remove spaces for tokenization purposes
 
-    for ex in metadata[:1]:
+    for ex in metadata[:5]:
         patches, inputs = get_patches(ex, n_layers, test_sentence_template)
         run_patching_experiment(
             ex,
