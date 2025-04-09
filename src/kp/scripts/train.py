@@ -10,7 +10,7 @@ from transformers import Trainer, TrainingArguments
 import wandb
 from kp.train.callbacks import LoggingCallback
 from kp.train.model_factory import model_factory
-from kp.utils.constants import DATA_DIR, TRAINING_CONFIG_DIR, logging
+from kp.utils.constants import DATA_DIR, LOGGER, TRAINING_CONFIG_DIR
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
@@ -25,7 +25,7 @@ model_checkpoint_map = {
 
 
 def train(config_path):
-    logging.info("Loading configuration...")
+    LOGGER.info("Loading configuration...")
     with open(config_path, "r") as file:
         config = yaml.safe_load(file)
 
@@ -36,7 +36,7 @@ def train(config_path):
     RUN_NAME = config["run_name"]
     RUN_NAME = RUN_NAME + "_smoke_test" if SMOKE_TEST else RUN_NAME
 
-    data_dir = DATA_DIR / config["data_dir"]
+    data_dir = DATA_DIR / config["data_dir"] / "dataset"
 
     # INCLUDE_REVERSED = config["data_options"]["include_reversed"]
 
@@ -67,7 +67,7 @@ def train(config_path):
     )
 
     ### CUSTOM DATA PREP ###
-    logging.info("Loading custom dataset...")
+    LOGGER.info("Loading custom dataset...")
     dataset = load_dataset("json", data_dir=data_dir)
     dataset = dataset.map(preprocess_data, batched=True)
 
@@ -109,7 +109,7 @@ def train(config_path):
     # Note: Doesn't generalize to other models besides gemma
     if FREEZE_EMBEDDINGS:
         if "gemma" in model_name:
-            logging.info("Freezing output embeddings...")
+            LOGGER.info("Freezing output embeddings...")
             for param in model.get_output_embeddings().parameters():
                 param.requires_grad = False
             # Note: not totally sure how tying works so...freeze the input_embeddings too
@@ -119,7 +119,7 @@ def train(config_path):
 
     # Note: If this is true, we train only the unembeddings
     if TRAIN_UNEMBEDDINGS_ONLY:
-        logging.info("Freezing all parameters except output embeddings...")
+        LOGGER.info("Freezing all parameters except output embeddings...")
         for param in model.parameters():
             param.requires_grad = False
 
@@ -165,12 +165,12 @@ def train(config_path):
     )
 
     ### TRAINING ###
-    logging.info("Evaluating before training for baseline metrics...")
+    LOGGER.info("Evaluating before training for baseline metrics...")
     trainer.evaluate()
 
-    logging.info("Starting training...")
+    LOGGER.info("Starting training...")
     trainer.train()
-    logging.info("Training complete!")
+    LOGGER.info("Training complete!")
 
     trainer.save_model(output_dir)
 
@@ -187,6 +187,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     yaml_path = TRAINING_CONFIG_DIR / args.config
-    logging.info(f"Training with config: {yaml_path}")
+    LOGGER.info(f"Training with config: {yaml_path}")
 
     train(yaml_path)
