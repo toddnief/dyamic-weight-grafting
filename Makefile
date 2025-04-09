@@ -1,7 +1,7 @@
 include .env # sets PARTITION
 
 _conda = conda
-ENV_NAME = reversal-sft
+ENV_NAME = kp
 
 workdir = ./
 scripts_dir = ${workdir}
