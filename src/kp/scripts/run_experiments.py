@@ -12,8 +12,10 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from kp.utils.constants import (
     DEVICE,
     EXPERIMENTS_CONFIG_DIR,
+    EXPERIMENTS_DIR,
     LOGGER,
     MODEL_TO_HFID,
+    TIMESTAMP,
 )
 
 MODEL_CONFIGS = {
@@ -175,6 +177,7 @@ def get_patches(ex, n_layers, test_sentence_template, tokenizer):
 
 def run_patching_experiment(
     ex,
+    ex_id,
     patches,
     config,
     tokenizer,
@@ -183,6 +186,8 @@ def run_patching_experiment(
     llm_donor_base,
     target_key,
     patch_dropout=0.0,
+    patching_strategy="layer",  # choices: layer, matrix
+    top_k=20,
 ):
     target_token_idx = tokenizer.encode(ex[target_key], add_special_tokens=False)[0]
 
@@ -208,11 +213,16 @@ def run_patching_experiment(
         if p.patch_layers is not None:
             print(p.patch_layers)
             for layer_idx in p.patch_layers:
-                if random.random() < patch_dropout:
+                if patching_strategy == "layer" and random.random() < patch_dropout:
                     print(f"Skipping layer {layer_idx}")
                     continue
                 for logical_name, physical_name in config.items():
-                    if asdict(p.targets).get(logical_name, False):
+                    PATCH_FLAG = (
+                        random.random() < patch_dropout
+                        if patching_strategy == "matrix"
+                        else True
+                    )
+                    if PATCH_FLAG and asdict(p.targets).get(logical_name, False):
                         patch_component(
                             llm_recipient,
                             llm_donor,
@@ -232,26 +242,37 @@ def run_patching_experiment(
             )
             past_key_values = patched_output.past_key_values
 
-    # Decode just the final output
-    generated_text = tokenizer.decode(patched_output.logits[:, -1].argmax(dim=-1)[0])
+    probs = torch.softmax(patched_output.logits[0, -1], dim=-1)
+    topk_probs, topk_indices = torch.topk(probs, top_k)
+    target_token_prob = probs[target_token_idx].item()
 
-    # TODO: Actually return this stuff and deal with it appropriately
+    generated_text = tokenizer.decode(topk_indices[0])
+
+    top_predictions = []
+    for prob, idx in zip(topk_probs.tolist(), topk_indices.tolist()):
+        token_str = tokenizer.decode([idx])
+        top_predictions.append(
+            {
+                "token_id": idx,
+                "token": token_str,
+                "probability": prob,
+            }
+        )
+
     print("##### FINAL patched_output ######")
     print("Generated text:", generated_text)
-    print(
-        "Decoded token prob: ",
-        torch.softmax(patched_output.logits[0, -1], dim=-1).max().item(),
-    )
-    print(
-        "Patched target token logit: ",
-        patched_output.logits[0, -1, target_token_idx].item(),
-    )
-    print(
-        "Patched target token prob: ",
-        torch.softmax(patched_output.logits[0, -1], dim=-1)[target_token_idx].item(),
-    )
 
-    return generated_text
+    print("Decoded top prob: ", top_predictions[0]["probability"])
+    print("Decoded top token: ", top_predictions[0]["token"])
+    print("Target token prob: ", target_token_prob)
+
+    results = {
+        "ex_id": ex_id,
+        "top_predictions": top_predictions,
+        "target_token_prob": target_token_prob,
+    }
+
+    return results
 
 
 def main(config_path):
@@ -259,11 +280,17 @@ def main(config_path):
     with open(config_path, "r") as f:
         config = yaml.safe_load(f)
 
+    SMOKE_TEST = config["smoke_test"]
+
     model_name = config["model"]["pretrained"]
+    experiment_name = config["experiment_name"]
 
     pretrained = MODEL_TO_HFID[model_name]
     both_directions = config["paths"]["both_directions"]
     metadata_path = config["paths"]["metadata"]
+
+    output_dir = EXPERIMENTS_DIR / experiment_name / TIMESTAMP
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     llm_pretrained = AutoModelForCausalLM.from_pretrained(pretrained).to(DEVICE)
     llm_finetuned = AutoModelForCausalLM.from_pretrained(both_directions).to(DEVICE)
@@ -275,19 +302,28 @@ def main(config_path):
     n_layers = len(get_attr(llm_pretrained, MODEL_CONFIGS[model_name]["layers"]))
     test_sentence_template = "{first_actor} stars in {movie_title}{preposition}"  # Note: remove spaces for tokenization purposes
 
-    for ex in metadata[:5]:
+    # TODO: add example id during data generation
+    limit = 5 if SMOKE_TEST else None
+    results = []
+    for idx, ex in enumerate(metadata[:limit]):
         patches, inputs = get_patches(ex, n_layers, test_sentence_template, tokenizer)
-        run_patching_experiment(
-            ex,
-            patches,
-            config,
-            tokenizer,
-            inputs,
-            llm_recipient_base=llm_pretrained,
-            llm_donor_base=llm_finetuned,
-            patch_dropout=0.6,
-            target_key="second_actor",
+        results.append(
+            run_patching_experiment(
+                ex,
+                idx,
+                patches,
+                config,
+                tokenizer,
+                inputs,
+                llm_recipient_base=llm_pretrained,
+                llm_donor_base=llm_finetuned,
+                patch_dropout=0.6,
+                target_key="second_actor",
+            )
         )
+
+    with open(output_dir / "results.json", "w") as f:
+        json.dump(results, f, indent=2)
 
 
 if __name__ == "__main__":

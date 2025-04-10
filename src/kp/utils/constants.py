@@ -6,7 +6,10 @@ from pathlib import Path
 import torch
 from dotenv import load_dotenv
 
+load_dotenv()
+
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+TIMESTAMP = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
 # Set up logging
 log_format = "%(asctime)s - %(levelname)s - %(message)s"
@@ -22,6 +25,7 @@ LOGGER = logging.getLogger("main")
 # Set up paths
 PACKAGE_DIR = Path(__file__).parent.parent.resolve()
 PROJECT_DIR = PACKAGE_DIR.parent.parent.resolve()
+ARTIFACTS_DIR = Path(os.getenv("ARTIFACTS_DIR"))
 
 CONFIG_DIR = PROJECT_DIR / "config"
 DATASETS_CONFIG_DIR = CONFIG_DIR / "datasets"
@@ -30,14 +34,14 @@ EXPERIMENTS_CONFIG_DIR = CONFIG_DIR / "experiments"
 
 DATA_DIR = PROJECT_DIR / "data"
 TEMPLATES_DIR = PROJECT_DIR / "data_templates"
-
 ACTOR_NAMES_PATH = TEMPLATES_DIR / "fake_movies_real_actors" / "real_actors.jsonl"
 
-
-load_dotenv()
+EXPERIMENTS_DIR = ARTIFACTS_DIR / "experiments"
+TRAINED_MODELS_DIR = ARTIFACTS_DIR / "trained_models"
+# Set up API keys
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-TIMESTAMP = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
+# Model constants
 MODEL_TO_HFID = {
     "bart": "facebook/bart-large",
     "gpt2": "gpt2",
