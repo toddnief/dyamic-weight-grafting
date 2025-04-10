@@ -1,3 +1,4 @@
+import argparse
 import copy
 import json
 import random
@@ -5,37 +6,55 @@ from dataclasses import asdict, dataclass, field
 from typing import List
 
 import torch
+import yaml
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-DEVICE = "cuda:0" if torch.cuda.is_available() else "cpu"
-
-pretrained = "google/gemma-1.1-2b-it"
-pretrained = "EleutherAI/pythia-2.8b"
-
-llm_pretrained = AutoModelForCausalLM.from_pretrained(pretrained).to(DEVICE)
-
-one_direction = (
-    "/net/projects/clab/tnief/bidirectional-reversal/trained/gemma_one_direction"
-)
-both_directions = (
-    "/net/projects/clab/tnief/bidirectional-reversal/trained/gemma_both_directions"
+from kp.utils.constants import (
+    DEVICE,
+    EXPERIMENTS_CONFIG_DIR,
+    LOGGER,
+    MODEL_TO_HFID,
 )
 
-both_directions = "/net/projects/clab/tnief/bidirectional-reversal/results/pythia-2.8b/fake_movies_real_actors20250408_1954/checkpoint-7200"
-both_directions
+MODEL_CONFIGS = {
+    "gemma": {
+        "layers": "model.layers",
+        "mlp_up": "mlp.up_proj",
+        "mlp_down": "mlp.down_proj",
+        "gate": "mlp.gate_proj",
+        "q": "self_attn.q_proj",
+        "k": "self_attn.k_proj",
+        "v": "self_attn.v_proj",
+        "o": "self_attn.o_proj",
+    },
+    "pythia-2.8b": {
+        "layers": "gpt_neox.layers",
+        "mlp_up": "mlp.dense_h_to_4h",
+        "mlp_down": "mlp.dense_4h_to_h",
+        "q": "attention.query_key_value",  # fused, so must handle specially
+        "o": "attention.dense",
+    },
+}
 
-path = "/home/tnief/1-Projects/bidirectional-reversal/data/fake_movies_real_actors_2025-04-08_19-50-18/metadata/metadata.jsonl"
 
-tokenizer = AutoTokenizer.from_pretrained(pretrained)
+@dataclass
+class PatchTargets:
+    embeddings: bool = False
+    lm_head: bool = False
+    q: bool = False
+    k: bool = False
+    v: bool = False
+    o: bool = False
+    gate: bool = False
+    mlp_up: bool = False
+    mlp_down: bool = False
 
-llm_both = AutoModelForCausalLM.from_pretrained(both_directions).to(DEVICE)
 
-# Note: Commenting out for now while scaling up experiments
-# llm_one = AutoModelForCausalLM.from_pretrained(one_direction).to(DEVICE)
-
-with open(path, "r") as f:
-    metadata = [json.loads(line) for line in f]
-ex = metadata[0]
+@dataclass
+class Patch:
+    patch_token_idx: int
+    patch_layers: List[int] = field(default_factory=list)
+    targets: PatchTargets = field(default_factory=PatchTargets)
 
 
 def find_sublist_index(full_list, sublist):
@@ -61,26 +80,6 @@ def parse_layers(patch_layers):
     return sorted(set(expanded_layers))  # Sort and remove duplicates
 
 
-@dataclass
-class PatchTargets:
-    embeddings: bool = False
-    lm_head: bool = False
-    q: bool = False
-    k: bool = False
-    v: bool = False
-    o: bool = False
-    gate: bool = False
-    mlp_up: bool = False
-    mlp_down: bool = False
-
-
-@dataclass
-class Patch:
-    patch_token_idx: int
-    patch_layers: List[int] = field(default_factory=list)
-    targets: PatchTargets = field(default_factory=PatchTargets)
-
-
 def get_attr(obj, attr_path):
     for attr in attr_path.split("."):
         obj = getattr(obj, attr)
@@ -95,34 +94,7 @@ def patch_component(llm_receipient, llm_donor, base_path, layer_idx, attr_name):
     receipient_component.load_state_dict(donor_component.state_dict())
 
 
-model_configs = {
-    # TODO: Fix Gemma once I have this working in general
-    "gemma": {
-        "layer_path": "model.layers",
-        "mapping": {
-            "mlp_up": "mlp.up_proj",
-            "mlp_down": "mlp.down_proj",
-            "gate": "mlp.gate_proj",
-            "q": "self_attn.q_proj",
-            "k": "self_attn.k_proj",
-            "v": "self_attn.v_proj",
-            "o": "self_attn.o_proj",
-        },
-    },
-    "pythia": {
-        "layers": "gpt_neox.layers",
-        "mlp_up": "mlp.dense_h_to_4h",
-        "mlp_down": "mlp.dense_4h_to_h",
-        "q": "attention.query_key_value",  # fused, so must handle specially
-        "o": "attention.dense",
-    },
-}
-
-model_name = "pythia"
-config = model_configs[model_name]
-
-
-def get_patches(ex, n_layers, test_sentence_template):
+def get_patches(ex, n_layers, test_sentence_template, tokenizer):
     # TODO: Should spaces be managed here or elsewhere?
     # TODO: In general, I don't like how this works. Make this work better from the example.
     first_entity = ex["first_actor"]
@@ -282,12 +254,29 @@ def run_patching_experiment(
     return generated_text
 
 
-def main():
-    n_layers = len(get_attr(llm_pretrained, config["layers"]))
+def main(config_path):
+    # TODO: Clean up these config settings and path variable names
+    with open(config_path, "r") as f:
+        config = yaml.safe_load(f)
+
+    model_name = config["model"]["pretrained"]
+
+    pretrained = MODEL_TO_HFID[model_name]
+    both_directions = config["paths"]["both_directions"]
+    metadata_path = config["paths"]["metadata"]
+
+    llm_pretrained = AutoModelForCausalLM.from_pretrained(pretrained).to(DEVICE)
+    llm_finetuned = AutoModelForCausalLM.from_pretrained(both_directions).to(DEVICE)
+    tokenizer = AutoTokenizer.from_pretrained(pretrained)
+
+    with open(metadata_path, "r") as f:
+        metadata = [json.loads(line) for line in f]
+
+    n_layers = len(get_attr(llm_pretrained, MODEL_CONFIGS[model_name]["layers"]))
     test_sentence_template = "{first_actor} stars in {movie_title}{preposition}"  # Note: remove spaces for tokenization purposes
 
     for ex in metadata[:5]:
-        patches, inputs = get_patches(ex, n_layers, test_sentence_template)
+        patches, inputs = get_patches(ex, n_layers, test_sentence_template, tokenizer)
         run_patching_experiment(
             ex,
             patches,
@@ -295,11 +284,23 @@ def main():
             tokenizer,
             inputs,
             llm_recipient_base=llm_pretrained,
-            llm_donor_base=llm_both,
+            llm_donor_base=llm_finetuned,
             patch_dropout=0.6,
             target_key="second_actor",
         )
 
 
 if __name__ == "__main__":
-    main()
+    # Note: Use argparse to allow submission of config file via slurm
+    parser = argparse.ArgumentParser(description="Scoring script")
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="config_experiments.yaml",
+        help="Path to the config file",
+    )
+    args = parser.parse_args()
+
+    config_path = EXPERIMENTS_CONFIG_DIR / args.config
+    LOGGER.info(f"Running experiments with config: {config_path}")
+    main(config_path)

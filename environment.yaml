@@ -12,6 +12,7 @@ dependencies:
   - pip:
       - -e . # install current directory as package, package config is in pyproject.toml
       - accelerate==1.0.0
+      - deepspeed
       - faker==21.0.0
       - numpy
       - spacy

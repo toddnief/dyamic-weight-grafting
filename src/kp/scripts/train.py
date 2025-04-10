@@ -10,18 +10,7 @@ from transformers import Trainer, TrainingArguments
 import wandb
 from kp.train.callbacks import LoggingCallback
 from kp.train.model_factory import model_factory
-from kp.utils.constants import DATA_DIR, LOGGER, TRAINING_CONFIG_DIR
-
-SCRIPT_DIR = Path(__file__).resolve().parent
-
-model_checkpoint_map = {
-    "bart": "facebook/bart-large",
-    "gpt2": "gpt2",
-    "gpt2-large": "gpt2-large",
-    "pythia-1.4b": "EleutherAI/pythia-1.4b",
-    "pythia-2.8b": "EleutherAI/pythia-2.8b",
-    "gemma": "google/gemma-1.1-2b-it",
-}
+from kp.utils.constants import DATA_DIR, LOGGER, MODEL_TO_HFID, TRAINING_CONFIG_DIR
 
 
 def train(config_path):
@@ -43,7 +32,7 @@ def train(config_path):
     model = config["model"]
     model_checkpoint = config["model_checkpoint"]
     if model_checkpoint is None:
-        model_checkpoint = model_checkpoint_map[model]
+        model_checkpoint = MODEL_TO_HFID[model]
     model, tokenizer, preprocess_data = model_factory(model, model_checkpoint)
     model_name = model_checkpoint.split("/")[-1]
 
@@ -102,6 +91,7 @@ def train(config_path):
     num_training_examples = len(dataset["train"])
     train_batch_size = config["training"]["per_device_train_batch_size"]
     steps_per_epoch = num_training_examples // train_batch_size
+    # TODO: Do I actually need this?
     halfway_steps = max(steps_per_epoch // 2, 1)
 
     callbacks = [LoggingCallback]
