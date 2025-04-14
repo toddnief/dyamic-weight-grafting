@@ -136,7 +136,7 @@ def get_patches(ex, n_layers, test_sentence_template, tokenizer):
     fourth_quarter_layers = list(range(3 * quarter, n_layers))
 
     first_entity_patch_targets = PatchTargets(
-        mlp_up=True, mlp_down=True, o=True, q=False
+        mlp_up=True, mlp_down=True, o=True, q=False, gate=True
     )
 
     first_entity_patch_config = {
@@ -144,12 +144,14 @@ def get_patches(ex, n_layers, test_sentence_template, tokenizer):
         "patch_layers": all_layers,
     }
 
-    movie_patch_targets = PatchTargets(mlp_up=True, mlp_down=True, o=True, q=False)
+    movie_patch_targets = PatchTargets(
+        mlp_up=True, mlp_down=True, o=True, q=False, gate=True
+    )
 
     movie_patch_config = {"targets": movie_patch_targets, "patch_layers": all_layers}
 
     preposition_patch_targets = PatchTargets(
-        mlp_up=True, mlp_down=True, o=True, q=False
+        mlp_up=True, mlp_down=True, o=True, q=False, gate=True
     )
 
     preposition_patch_config = {
@@ -177,7 +179,6 @@ def get_patches(ex, n_layers, test_sentence_template, tokenizer):
 
 def run_patching_experiment(
     ex,
-    ex_id,
     patches,
     config,
     tokenizer,
@@ -189,10 +190,12 @@ def run_patching_experiment(
     patching_strategy="layer",  # choices: layer, matrix
     top_k=20,
 ):
-    target_token_idx = tokenizer.encode(ex[target_key], add_special_tokens=False)[0]
+    target_token = ex[target_key]
+    target_token_idx = tokenizer.encode(" " + target_token, add_special_tokens=False)[0]
+
+    ex_id = ex["id"]
 
     past_key_values = None
-
     for i, p in enumerate(patches):
         # Reset models for new patching
         llm_recipient = copy.deepcopy(llm_recipient_base)
@@ -246,8 +249,6 @@ def run_patching_experiment(
     topk_probs, topk_indices = torch.topk(probs, top_k)
     target_token_prob = probs[target_token_idx].item()
 
-    generated_text = tokenizer.decode(topk_indices[0])
-
     top_predictions = []
     for prob, idx in zip(topk_probs.tolist(), topk_indices.tolist()):
         token_str = tokenizer.decode([idx])
@@ -260,16 +261,19 @@ def run_patching_experiment(
         )
 
     print("##### FINAL patched_output ######")
-    print("Generated text:", generated_text)
-
-    print("Decoded top prob: ", top_predictions[0]["probability"])
     print("Decoded top token: ", top_predictions[0]["token"])
+    print("Decoded top prob: ", top_predictions[0]["probability"])
+    print("Target token: ", target_token)
     print("Target token prob: ", target_token_prob)
 
     results = {
         "ex_id": ex_id,
         "top_predictions": top_predictions,
-        "target_token_prob": target_token_prob,
+        "target": {
+            "token": target_token,
+            "token_idx": target_token_idx,
+            "token_prob": target_token_prob,
+        },
     }
 
     return results
@@ -292,6 +296,7 @@ def main(config_path):
     output_dir = EXPERIMENTS_DIR / experiment_name / TIMESTAMP
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # TODO: set up logic for switching which is receipient and which is donor based on config
     llm_pretrained = AutoModelForCausalLM.from_pretrained(pretrained).to(DEVICE)
     llm_finetuned = AutoModelForCausalLM.from_pretrained(both_directions).to(DEVICE)
     tokenizer = AutoTokenizer.from_pretrained(pretrained)
@@ -302,28 +307,31 @@ def main(config_path):
     n_layers = len(get_attr(llm_pretrained, MODEL_CONFIGS[model_name]["layers"]))
     test_sentence_template = "{first_actor} stars in {movie_title}{preposition}"  # Note: remove spaces for tokenization purposes
 
-    # TODO: add example id during data generation
-    limit = 5 if SMOKE_TEST else None
     results = []
-    for idx, ex in enumerate(metadata[:limit]):
+    limit = 5 if SMOKE_TEST else None
+    for ex in metadata[:limit]:
         patches, inputs = get_patches(ex, n_layers, test_sentence_template, tokenizer)
         results.append(
             run_patching_experiment(
                 ex,
-                idx,
                 patches,
                 config,
                 tokenizer,
                 inputs,
                 llm_recipient_base=llm_pretrained,
                 llm_donor_base=llm_finetuned,
-                patch_dropout=0.6,
+                patch_dropout=0.0,
                 target_key="second_actor",
             )
         )
 
+    results_final = {
+        "config": config,
+        "results": results,
+    }
+
     with open(output_dir / "results.json", "w") as f:
-        json.dump(results, f, indent=2)
+        json.dump(results_final, f, indent=2)
 
 
 if __name__ == "__main__":
