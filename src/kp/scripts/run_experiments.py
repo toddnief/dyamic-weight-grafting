@@ -119,27 +119,21 @@ def get_layers_dict(n_layers):
 def get_patches(ex, n_layers, test_sentence_template, tokenizer):
     layers_dict = get_layers_dict(n_layers)
 
-    # TODO: Should spaces be managed here or elsewhere?
     # TODO: In general, I don't like how this works
+    # TODO: Should spaces be managed here or elsewhere?
     first_entity = ex["first_actor"]
     movie = " " + ex["movie_title"]
     preposition = " alongside"
 
-    first_entity_tokens = tokenizer.encode(
-        first_entity, add_special_tokens=False, return_tensors="pt"
-    )
-    movie_tokens = tokenizer.encode(
-        movie, add_special_tokens=False, return_tensors="pt"
-    )
-    preposition_tokens = tokenizer.encode(
-        preposition, add_special_tokens=False, return_tensors="pt"
-    )
-
-    # TODO: This is ugly also
+    # TODO: I don't like this...
     test_sentence = test_sentence_template.format(**ex, preposition=preposition)
     inputs = tokenizer(test_sentence, return_tensors="pt").to(DEVICE)
 
     # Set up first entity patch config
+    first_entity_tokens = tokenizer.encode(
+        first_entity, add_special_tokens=False, return_tensors="pt"
+    )
+
     first_entity_start_idx, first_entity_end_idx = find_sublist_index(
         inputs["input_ids"], first_entity_tokens
     )
@@ -154,6 +148,9 @@ def get_patches(ex, n_layers, test_sentence_template, tokenizer):
     }
 
     # Set up movie patch config
+    movie_tokens = tokenizer.encode(
+        movie, add_special_tokens=False, return_tensors="pt"
+    )
     movie_start_idx, movie_end_idx = find_sublist_index(
         inputs["input_ids"], movie_tokens
     )
@@ -168,6 +165,9 @@ def get_patches(ex, n_layers, test_sentence_template, tokenizer):
     }
 
     # Set up preposition patch config
+    preposition_tokens = tokenizer.encode(
+        preposition, add_special_tokens=False, return_tensors="pt"
+    )
     preposition_start_idx, preposition_end_idx = find_sublist_index(
         inputs["input_ids"], preposition_tokens
     )
@@ -181,57 +181,18 @@ def get_patches(ex, n_layers, test_sentence_template, tokenizer):
         "patch_layers": layers_dict["all"],
     }
 
+    # TODO: These variables could use better names
     patch_configs = [
         first_entity_patch_config,
         movie_patch_config,
         preposition_patch_config,
     ]
 
-    # # TODO: Get a better name...
-    # patch_config = {
-    #     "first_entity": first_entity_patch_config,
-    #     "movie": movie_patch_config,
-    #     "preposition": preposition_patch_config,
-    # }
-
     patches = {}
     for patch_config in patch_configs:
         for token_idx in range(patch_config["indeces"][0], patch_config["indeces"][1]):
             patches[token_idx] = Patch(token_idx, **patch_config)
 
-    # patches = []
-    # for token_idx in range(len(inputs["input_ids"][0])):
-    #     if first_entity_start_idx <= token_idx < first_entity_end_idx:
-    #         LOGGER.info(f"Patching first entity for token {token_idx}")
-    #         patches.append(Patch(token_idx, **first_entity_patch_config))
-    #     elif movie_start_idx <= token_idx < movie_end_idx:
-    #         LOGGER.info(f"Patching movie for token {token_idx}")
-    #         patches.append(Patch(token_idx, **movie_patch_config))
-    #     elif preposition_start_idx <= token_idx < preposition_end_idx:
-    #         LOGGER.info(f"Patching preposition for token {token_idx}")
-    #         patches.append(Patch(token_idx, **preposition_patch_config))
-    #     else:
-    #         LOGGER.info(f"No patching for token {token_idx}")
-    #         patches.append(Patch(token_idx))
-
-    # patches = []
-    # for token_idx in range(len(inputs["input_ids"][0])):
-    #     patched = False
-    #     # Iterate through the configured patches.
-    #     for key, (start_idx, end_idx) in phrase_indices.items():
-    #         if start_idx <= token_idx < end_idx:
-    #             conf = phrases_config[key]
-    #             # Decide on patch_layers: if "all", use all_layers; else, use provided list.
-    #             patch_layers = all_layers if conf.get("patch_layers") == "all" else conf.get("patch_layers")
-    #             # Create patch config dict using the patch_targets from config.
-    #             patch_conf = {"targets": PatchTargets(**conf["patch_targets"]), "patch_layers": patch_layers}
-    #             LOGGER.info(f"Patching {key} for token {token_idx}")
-    #             patches.append(Patch(token_idx, **patch_conf))
-    #             patched = True
-    #             break
-    #     if not patched:
-    #         LOGGER.info(f"No patching for token {token_idx}")
-    #         patches.append(Patch(token_idx))
     return patches, inputs
 
 
@@ -299,55 +260,6 @@ def run_patching_experiment(
                 past_key_values=past_key_values,
             )
             past_key_values = patched_output.past_key_values
-
-        # # Reset models for new patching
-        # llm_recipient = copy.deepcopy(llm_recipient_base)
-        # llm_donor = copy.deepcopy(llm_donor_base)
-
-        # LOGGER.info(f"######## PATCH {i + 1} ##########")
-        # LOGGER.info(
-        #     tokenizer.decode(
-        #         inputs["input_ids"][:, p.patch_token_idx : p.patch_token_idx + 1]
-        #         .squeeze()
-        #         .tolist()
-        #     )
-        # )
-        # LOGGER.info(
-        #     f"Patch token start: {p.patch_token_idx}, Patch token end: {p.patch_token_idx}"
-        # )
-
-        # if p.patch_layers is not None:
-        #     LOGGER.info(p.patch_layers)
-        #     for layer_idx in p.patch_layers:
-        #         if dropout_strategy == "layer" and random.random() < patch_dropout:
-        #             LOGGER.info(f"Skipping layer {layer_idx}")
-        #             continue
-        #         for logical_name, physical_name in model_config.items():
-        #             PATCH_FLAG = (
-        #                 random.random() < patch_dropout
-        #                 if dropout_strategy == "matrix"
-        #                 else True
-        #             )
-        #             if PATCH_FLAG and asdict(p.targets).get(logical_name, False):
-        #                 # LOGGER.info(f"Patching {logical_name} for layer {layer_idx}")
-        #                 patch_component(
-        #                     llm_recipient,
-        #                     llm_donor,
-        #                     model_config["layers"],
-        #                     layer_idx,
-        #                     physical_name,
-        #                 )
-        # else:
-        #     LOGGER.info("No patching")
-
-        # # Get the patched output
-        # with torch.no_grad():
-        #     patched_output = llm_recipient(
-        #         inputs["input_ids"][:, p.patch_token_idx : p.patch_token_idx + 1],
-        #         use_cache=True,
-        #         past_key_values=past_key_values,
-        #     )
-        #     past_key_values = patched_output.past_key_values
 
     probs = torch.softmax(patched_output.logits[0, -1], dim=-1)
     topk_probs, topk_indices = torch.topk(probs, top_k)
