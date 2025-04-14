@@ -3,7 +3,7 @@ import copy
 import json
 import random
 from dataclasses import asdict, dataclass, field
-from typing import List
+from typing import List, Tuple
 
 import torch
 import yaml
@@ -54,7 +54,8 @@ class PatchTargets:
 
 @dataclass
 class Patch:
-    patch_token_idx: int
+    patch_token_idx: int  # TODO: Should I remove this and use indeces instead?
+    indeces: Tuple[int, int]
     patch_layers: List[int] = field(default_factory=list)
     targets: PatchTargets = field(default_factory=PatchTargets)
 
@@ -96,9 +97,30 @@ def patch_component(llm_receipient, llm_donor, base_path, layer_idx, attr_name):
     receipient_component.load_state_dict(donor_component.state_dict())
 
 
+def get_layers_dict(n_layers):
+    all_layers = list(range(n_layers))
+    quarter = n_layers // 4
+    first_quarter_layers = list(range(0, quarter))
+    second_quarter_layers = list(range(quarter, 2 * quarter))
+    third_quarter_layers = list(range(2 * quarter, 3 * quarter))
+    fourth_quarter_layers = list(range(3 * quarter, n_layers))
+
+    layers_dict = {
+        "all": all_layers,
+        "first_quarter": first_quarter_layers,
+        "second_quarter": second_quarter_layers,
+        "third_quarter": third_quarter_layers,
+        "fourth_quarter": fourth_quarter_layers,
+    }
+
+    return layers_dict
+
+
 def get_patches(ex, n_layers, test_sentence_template, tokenizer):
+    layers_dict = get_layers_dict(n_layers)
+
     # TODO: Should spaces be managed here or elsewhere?
-    # TODO: In general, I don't like how this works. Make this work better from the example.
+    # TODO: In general, I don't like how this works
     first_entity = ex["first_actor"]
     movie = " " + ex["movie_title"]
     preposition = " alongside"
@@ -117,77 +139,114 @@ def get_patches(ex, n_layers, test_sentence_template, tokenizer):
     test_sentence = test_sentence_template.format(**ex, preposition=preposition)
     inputs = tokenizer(test_sentence, return_tensors="pt").to(DEVICE)
 
+    # Set up first entity patch config
     first_entity_start_idx, first_entity_end_idx = find_sublist_index(
         inputs["input_ids"], first_entity_tokens
     )
-    movie_start_idx, movie_end_idx = find_sublist_index(
-        inputs["input_ids"], movie_tokens
-    )
-    preposition_start_idx, preposition_end_idx = find_sublist_index(
-        inputs["input_ids"], preposition_tokens
-    )
-
-    all_layers = list(range(n_layers))
-
-    quarter = n_layers // 4
-    first_quarter_layers = list(range(0, quarter))
-    second_quarter_layers = list(range(quarter, 2 * quarter))
-    third_quarter_layers = list(range(2 * quarter, 3 * quarter))
-    fourth_quarter_layers = list(range(3 * quarter, n_layers))
-
     first_entity_patch_targets = PatchTargets(
         mlp_up=True, mlp_down=True, o=True, q=False, gate=True
     )
 
     first_entity_patch_config = {
+        "indeces": (first_entity_start_idx, first_entity_end_idx),
         "targets": first_entity_patch_targets,
-        "patch_layers": all_layers,
+        "patch_layers": layers_dict["all"],
     }
 
+    # Set up movie patch config
+    movie_start_idx, movie_end_idx = find_sublist_index(
+        inputs["input_ids"], movie_tokens
+    )
     movie_patch_targets = PatchTargets(
         mlp_up=True, mlp_down=True, o=True, q=False, gate=True
     )
 
-    movie_patch_config = {"targets": movie_patch_targets, "patch_layers": all_layers}
+    movie_patch_config = {
+        "indeces": (movie_start_idx, movie_end_idx),
+        "targets": movie_patch_targets,
+        "patch_layers": layers_dict["all"],
+    }
 
+    # Set up preposition patch config
+    preposition_start_idx, preposition_end_idx = find_sublist_index(
+        inputs["input_ids"], preposition_tokens
+    )
     preposition_patch_targets = PatchTargets(
         mlp_up=True, mlp_down=True, o=True, q=False, gate=True
     )
 
     preposition_patch_config = {
+        "indeces": (preposition_start_idx, preposition_end_idx),
         "targets": preposition_patch_targets,
-        "patch_layers": all_layers,
+        "patch_layers": layers_dict["all"],
     }
 
-    # TODO: This is not generalizable to arbitrary text — how should I actually do this?
-    patches = []
-    for token_idx in range(len(inputs["input_ids"][0])):
-        if first_entity_start_idx <= token_idx < first_entity_end_idx:
-            print(f"Patching first entity for token {token_idx}")
-            patches.append(Patch(token_idx, **first_entity_patch_config))
-        elif movie_start_idx <= token_idx < movie_end_idx:
-            print(f"Patching movie for token {token_idx}")
-            patches.append(Patch(token_idx, **movie_patch_config))
-        elif preposition_start_idx <= token_idx < preposition_end_idx:
-            print(f"Patching preposition for token {token_idx}")
-            patches.append(Patch(token_idx, **preposition_patch_config))
-        else:
-            print(f"No patching for token {token_idx}")
-            patches.append(Patch(token_idx))
+    patch_configs = [
+        first_entity_patch_config,
+        movie_patch_config,
+        preposition_patch_config,
+    ]
+
+    # # TODO: Get a better name...
+    # patch_config = {
+    #     "first_entity": first_entity_patch_config,
+    #     "movie": movie_patch_config,
+    #     "preposition": preposition_patch_config,
+    # }
+
+    patches = {}
+    for patch_config in patch_configs:
+        for token_idx in range(patch_config["indeces"][0], patch_config["indeces"][1]):
+            patches[token_idx] = Patch(token_idx, **patch_config)
+
+    breakpoint()
+    # patches = []
+    # for token_idx in range(len(inputs["input_ids"][0])):
+    #     if first_entity_start_idx <= token_idx < first_entity_end_idx:
+    #         LOGGER.info(f"Patching first entity for token {token_idx}")
+    #         patches.append(Patch(token_idx, **first_entity_patch_config))
+    #     elif movie_start_idx <= token_idx < movie_end_idx:
+    #         LOGGER.info(f"Patching movie for token {token_idx}")
+    #         patches.append(Patch(token_idx, **movie_patch_config))
+    #     elif preposition_start_idx <= token_idx < preposition_end_idx:
+    #         LOGGER.info(f"Patching preposition for token {token_idx}")
+    #         patches.append(Patch(token_idx, **preposition_patch_config))
+    #     else:
+    #         LOGGER.info(f"No patching for token {token_idx}")
+    #         patches.append(Patch(token_idx))
+
+    # patches = []
+    # for token_idx in range(len(inputs["input_ids"][0])):
+    #     patched = False
+    #     # Iterate through the configured patches.
+    #     for key, (start_idx, end_idx) in phrase_indices.items():
+    #         if start_idx <= token_idx < end_idx:
+    #             conf = phrases_config[key]
+    #             # Decide on patch_layers: if "all", use all_layers; else, use provided list.
+    #             patch_layers = all_layers if conf.get("patch_layers") == "all" else conf.get("patch_layers")
+    #             # Create patch config dict using the patch_targets from config.
+    #             patch_conf = {"targets": PatchTargets(**conf["patch_targets"]), "patch_layers": patch_layers}
+    #             LOGGER.info(f"Patching {key} for token {token_idx}")
+    #             patches.append(Patch(token_idx, **patch_conf))
+    #             patched = True
+    #             break
+    #     if not patched:
+    #         LOGGER.info(f"No patching for token {token_idx}")
+    #         patches.append(Patch(token_idx))
     return patches, inputs
 
 
 def run_patching_experiment(
     ex,
     patches,
-    config,
+    model_config,
     tokenizer,
     inputs,
     llm_recipient_base,
     llm_donor_base,
     target_key,
     patch_dropout=0.0,
-    patching_strategy="layer",  # choices: layer, matrix
+    dropout_strategy="layer",  # choices: layer, matrix
     top_k=20,
 ):
     target_token = ex[target_key]
@@ -201,40 +260,41 @@ def run_patching_experiment(
         llm_recipient = copy.deepcopy(llm_recipient_base)
         llm_donor = copy.deepcopy(llm_donor_base)
 
-        print(f"######## PATCH {i + 1} ##########")
-        print(
+        LOGGER.info(f"######## PATCH {i + 1} ##########")
+        LOGGER.info(
             tokenizer.decode(
                 inputs["input_ids"][:, p.patch_token_idx : p.patch_token_idx + 1]
                 .squeeze()
                 .tolist()
             )
         )
-        print(
+        LOGGER.info(
             f"Patch token start: {p.patch_token_idx}, Patch token end: {p.patch_token_idx}"
         )
 
         if p.patch_layers is not None:
-            print(p.patch_layers)
+            LOGGER.info(p.patch_layers)
             for layer_idx in p.patch_layers:
-                if patching_strategy == "layer" and random.random() < patch_dropout:
-                    print(f"Skipping layer {layer_idx}")
+                if dropout_strategy == "layer" and random.random() < patch_dropout:
+                    LOGGER.info(f"Skipping layer {layer_idx}")
                     continue
-                for logical_name, physical_name in config.items():
+                for logical_name, physical_name in model_config.items():
                     PATCH_FLAG = (
                         random.random() < patch_dropout
-                        if patching_strategy == "matrix"
+                        if dropout_strategy == "matrix"
                         else True
                     )
                     if PATCH_FLAG and asdict(p.targets).get(logical_name, False):
+                        # LOGGER.info(f"Patching {logical_name} for layer {layer_idx}")
                         patch_component(
                             llm_recipient,
                             llm_donor,
-                            config["layers"],
+                            model_config["layers"],
                             layer_idx,
                             physical_name,
                         )
         else:
-            print("No patching")
+            LOGGER.info("No patching")
 
         # Get the patched output
         with torch.no_grad():
@@ -260,11 +320,11 @@ def run_patching_experiment(
             }
         )
 
-    print("##### FINAL patched_output ######")
-    print("Decoded top token: ", top_predictions[0]["token"])
-    print("Decoded top prob: ", top_predictions[0]["probability"])
-    print("Target token: ", target_token)
-    print("Target token prob: ", target_token_prob)
+    LOGGER.info("##### FINAL patched_output ######")
+    LOGGER.info(f"Decoded top token: {top_predictions[0]['token']}")
+    LOGGER.info(f"Decoded top prob: {top_predictions[0]['probability']}")
+    LOGGER.info(f"Target token: {target_token}")
+    LOGGER.info(f"Target token prob: {target_token_prob}")
 
     results = {
         "ex_id": ex_id,
@@ -285,26 +345,39 @@ def main(config_path):
         config = yaml.safe_load(f)
 
     SMOKE_TEST = config["smoke_test"]
-
     model_name = config["model"]["pretrained"]
     experiment_name = config["experiment_name"]
 
-    pretrained = MODEL_TO_HFID[model_name]
-    both_directions = config["paths"]["both_directions"]
+    # Set up dirs
     metadata_path = config["paths"]["metadata"]
-
     output_dir = EXPERIMENTS_DIR / experiment_name / TIMESTAMP
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # TODO: set up logic for switching which is receipient and which is donor based on config
-    llm_pretrained = AutoModelForCausalLM.from_pretrained(pretrained).to(DEVICE)
-    llm_finetuned = AutoModelForCausalLM.from_pretrained(both_directions).to(DEVICE)
+    # Load models
+    pretrained = MODEL_TO_HFID[model_name]
+    finetuned_path = config["paths"]["finetuned"]
+
     tokenizer = AutoTokenizer.from_pretrained(pretrained)
+    llm_pretrained = AutoModelForCausalLM.from_pretrained(pretrained).to(DEVICE)
+    llm_finetuned = AutoModelForCausalLM.from_pretrained(finetuned_path).to(DEVICE)
+
+    if config["model"]["donor_model"] == "finetuned":
+        llm_donor_base = llm_finetuned
+        llm_recipient_base = llm_pretrained
+    else:
+        llm_donor_base = llm_pretrained
+        llm_recipient_base = llm_finetuned
 
     with open(metadata_path, "r") as f:
         metadata = [json.loads(line) for line in f]
 
-    n_layers = len(get_attr(llm_pretrained, MODEL_CONFIGS[model_name]["layers"]))
+    # Load experiment config
+    model_config = MODEL_CONFIGS[model_name]
+    n_layers = len(get_attr(llm_pretrained, model_config["layers"]))
+
+    experiment_config = config["experiment_config"]
+
+    # TODO: Need to add this to an experimental config or something
     test_sentence_template = "{first_actor} stars in {movie_title}{preposition}"  # Note: remove spaces for tokenization purposes
 
     results = []
@@ -315,13 +388,12 @@ def main(config_path):
             run_patching_experiment(
                 ex,
                 patches,
-                config,
+                model_config,
                 tokenizer,
                 inputs,
-                llm_recipient_base=llm_pretrained,
-                llm_donor_base=llm_finetuned,
-                patch_dropout=0.0,
-                target_key="second_actor",
+                llm_recipient_base=llm_recipient_base,
+                llm_donor_base=llm_donor_base,
+                **experiment_config,
             )
         )
 
@@ -336,7 +408,7 @@ def main(config_path):
 
 if __name__ == "__main__":
     # Note: Use argparse to allow submission of config file via slurm
-    parser = argparse.ArgumentParser(description="Scoring script")
+    parser = argparse.ArgumentParser()
     parser.add_argument(
         "--config",
         type=str,
