@@ -34,6 +34,7 @@ def create_fake_movie_fake_actors_metadata(
         city = cities[i]
         metadata.append(
             {
+                "id": i + 1,
                 "first_actor": first_actor,
                 "second_actor": second_actor,
                 "movie_title": movie_title,

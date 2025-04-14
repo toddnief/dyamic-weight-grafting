@@ -1,6 +1,4 @@
 import argparse
-from datetime import datetime
-from pathlib import Path
 
 import torch
 import yaml
@@ -10,7 +8,14 @@ from transformers import Trainer, TrainingArguments
 import wandb
 from kp.train.callbacks import LoggingCallback
 from kp.train.model_factory import model_factory
-from kp.utils.constants import DATA_DIR, LOGGER, MODEL_TO_HFID, TRAINING_CONFIG_DIR
+from kp.utils.constants import (
+    DATA_DIR,
+    LOGGER,
+    MODEL_TO_HFID,
+    TIMESTAMP,
+    TRAINED_MODELS_DIR,
+    TRAINING_CONFIG_DIR,
+)
 
 
 def train(config_path):
@@ -36,14 +41,9 @@ def train(config_path):
     model, tokenizer, preprocess_data = model_factory(model, model_checkpoint)
     model_name = model_checkpoint.split("/")[-1]
 
-    training_folder = RUN_NAME + datetime.now().strftime("%Y%m%d_%H%M")
-
-    OUTPUT_FOLDER = Path(config["output_folder"]) / model_name
-    output_dir = (
-        OUTPUT_FOLDER / training_folder
-        if not SMOKE_TEST
-        else OUTPUT_FOLDER / f"{training_folder}_smoke_test"
-    )
+    model_dir_name = model_name if not SMOKE_TEST else f"{model_name}_smoke_test"
+    run_dir = RUN_NAME + TIMESTAMP
+    output_dir = TRAINED_MODELS_DIR / model_dir_name / run_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
     LOGITS_DIR = output_dir / "logits"
@@ -91,7 +91,6 @@ def train(config_path):
     num_training_examples = len(dataset["train"])
     train_batch_size = config["training"]["per_device_train_batch_size"]
     steps_per_epoch = num_training_examples // train_batch_size
-    # TODO: Do I actually need this?
     halfway_steps = max(steps_per_epoch // 2, 1)
 
     callbacks = [LoggingCallback]
@@ -127,17 +126,15 @@ def train(config_path):
 
     training_args = TrainingArguments(
         output_dir=output_dir,
-        # Note: This was when we were trying to do early stopping
-        # eval_strategy="steps",
-        # eval_steps=halfway_steps,
-        eval_strategy="epoch",
         learning_rate=float(config["training"]["learning_rate"]),
         weight_decay=float(config["training"]["weight_decay"]),
         per_device_train_batch_size=train_batch_size,
         per_device_eval_batch_size=config["training"]["per_device_eval_batch_size"],
         num_train_epochs=config["training"]["num_train_epochs"]
         if not SMOKE_TEST
-        else 3,
+        else 2,
+        eval_strategy=config["training"]["eval_strategy"],
+        eval_steps=halfway_steps,
         save_strategy=config["training"]["save_strategy"],
         save_total_limit=config["training"]["save_total_limit"],
         load_best_model_at_end=config["training"]["load_best_model_at_end"],
