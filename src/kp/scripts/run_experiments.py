@@ -209,8 +209,9 @@ def run_patching_experiment(
     dropout_strategy="layer",  # choices: layer, matrix
     top_k=20,
 ):
-    target_token = ex[target_key]
-    target_token_idx = tokenizer.encode(" " + target_token, add_special_tokens=False)[0]
+    target_name = ex[target_key]
+    target_token_idx = tokenizer.encode(" " + target_name, add_special_tokens=False)[0]
+    target_token = tokenizer.decode(target_token_idx)
 
     ex_id = ex["id"]
 
@@ -279,7 +280,7 @@ def run_patching_experiment(
     LOGGER.info("##### FINAL patched_output ######")
     LOGGER.info(f"Decoded top token: {top_predictions[0]['token']}")
     LOGGER.info(f"Decoded top prob: {top_predictions[0]['probability']}")
-    LOGGER.info(f"Target token: {target_token}")
+    LOGGER.info(f"Target token: {target_name}")
     LOGGER.info(f"Target token prob: {target_token_prob}")
 
     results = {
@@ -306,7 +307,8 @@ def main(config_path):
 
     # Set up dirs
     metadata_path = config["paths"]["metadata"]
-    output_dir = EXPERIMENTS_DIR / experiment_name / TIMESTAMP
+    timestamp_dir = TIMESTAMP if not SMOKE_TEST else TIMESTAMP + "_smoke_test"
+    output_dir = EXPERIMENTS_DIR / experiment_name / timestamp_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load models
