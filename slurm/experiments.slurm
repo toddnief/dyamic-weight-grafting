@@ -10,4 +10,3 @@
 CONFIG_FILE=${CONFIG:-config_experiments.yaml}
 
 python src/kp/scripts/run_experiments.py --config $CONFIG_FILE
-
