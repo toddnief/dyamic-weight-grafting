@@ -7,6 +7,7 @@ from typing import List, Tuple
 
 import torch
 import yaml
+from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from kp.utils.constants import (
@@ -221,8 +222,8 @@ def run_patching_experiment(
     llm_donor = copy.deepcopy(llm_donor_base)
 
     for idx in range(len(inputs["input_ids"][0])):
-        LOGGER.info(f"######## PATCH {idx} ##########")
-        LOGGER.info(f"Token: {tokenizer.decode(inputs['input_ids'][0, idx])}")
+        # LOGGER.info(f"######## PATCH {idx} ##########")
+        # LOGGER.info(f"Token: {tokenizer.decode(inputs['input_ids'][0, idx])}")
         if idx in patches and patches[idx].patch_layers:
             p = patches[idx]
 
@@ -230,10 +231,14 @@ def run_patching_experiment(
             llm_recipient = copy.deepcopy(llm_recipient_base)
             llm_donor = copy.deepcopy(llm_donor_base)
 
-            LOGGER.info(f"Patching layers: {p.patch_layers}")
+            # LOGGER.info(f"Patching layers: {p.patch_layers}")
+            dropout = {
+                "layers": [],
+            }
             for layer_idx in p.patch_layers:
                 if dropout_strategy == "layer" and random.random() < patch_dropout:
-                    LOGGER.info(f"Skipping layer {layer_idx}")
+                    # LOGGER.info(f"Skipping layer {layer_idx}")
+                    dropout["layers"].append(layer_idx)
                     continue
                 for logical_name, physical_name in model_config.items():
                     PATCH_FLAG = (
@@ -251,7 +256,8 @@ def run_patching_experiment(
                             physical_name,
                         )
         else:
-            LOGGER.info(f"No patching for token {idx}")
+            pass
+            # LOGGER.info(f"No patching for token {idx}")
 
         # Get the patched output
         with torch.no_grad():
@@ -277,14 +283,15 @@ def run_patching_experiment(
             }
         )
 
-    LOGGER.info("##### FINAL patched_output ######")
-    LOGGER.info(f"Decoded top token: {top_predictions[0]['token']}")
-    LOGGER.info(f"Decoded top prob: {top_predictions[0]['probability']}")
-    LOGGER.info(f"Target token: {target_name}")
-    LOGGER.info(f"Target token prob: {target_token_prob}")
+    # LOGGER.info("##### FINAL patched_output ######")
+    # LOGGER.info(f"Decoded top token: {top_predictions[0]['token']}")
+    # LOGGER.info(f"Decoded top prob: {top_predictions[0]['probability']}")
+    # LOGGER.info(f"Target token: {target_name}")
+    # LOGGER.info(f"Target token prob: {target_token_prob}")
 
     results = {
         "ex_id": ex_id,
+        "dropout": dropout,
         "top_predictions": top_predictions,
         "target": {
             "token": target_token,
@@ -307,7 +314,10 @@ def main(config_path):
 
     # Set up dirs
     metadata_path = config["paths"]["metadata"]
-    timestamp_dir = TIMESTAMP if not SMOKE_TEST else TIMESTAMP + "_smoke_test"
+    timestamp_dir = (
+        TIMESTAMP + "_dropout_" + str(config["experiment_config"]["patch_dropout"])
+    )
+    timestamp_dir = timestamp_dir + "_smoke_test" if SMOKE_TEST else timestamp_dir
     output_dir = EXPERIMENTS_DIR / experiment_name / timestamp_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -335,12 +345,11 @@ def main(config_path):
 
     experiment_config = config["experiment_config"]
 
-    # TODO: Need to add this to an experimental config or something
-    test_sentence_template = "{first_actor} stars in {movie_title}{preposition}"  # Note: remove spaces for tokenization purposes
+    test_sentence_template = config["templates"]["test_sentence_template"]
 
     results = []
     limit = 5 if SMOKE_TEST else None
-    for ex in metadata[:limit]:
+    for ex in tqdm(metadata[:limit]):
         patches, inputs = get_patches(ex, n_layers, test_sentence_template, tokenizer)
         results.append(
             run_patching_experiment(

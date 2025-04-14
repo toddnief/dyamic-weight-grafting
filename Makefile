@@ -35,3 +35,12 @@ create_datasets:
 	--output="$(output_file)" \
 	--error="$(err_file)" \
 	$(slurm_dir)create_datasets.slurm
+
+# Usage: make experiments CONFIG=config_experiments.yaml
+.PHONY: experiments
+experiments:
+	${SBATCH} \
+	--partition=$(PARTITION) \
+	--output="$(output_file)" \
+	--error="$(err_file)" \
+	$(slurm_dir)experiments.slurm
