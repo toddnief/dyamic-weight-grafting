@@ -199,7 +199,6 @@ def get_patches(ex, n_layers, test_sentence_template, tokenizer):
         for token_idx in range(patch_config["indeces"][0], patch_config["indeces"][1]):
             patches[token_idx] = Patch(token_idx, **patch_config)
 
-    breakpoint()
     # patches = []
     # for token_idx in range(len(inputs["input_ids"][0])):
     #     if first_entity_start_idx <= token_idx < first_entity_end_idx:
@@ -254,26 +253,22 @@ def run_patching_experiment(
 
     ex_id = ex["id"]
 
+    # Initialize past key values and models before loop
     past_key_values = None
-    for i, p in enumerate(patches):
-        # Reset models for new patching
-        llm_recipient = copy.deepcopy(llm_recipient_base)
-        llm_donor = copy.deepcopy(llm_donor_base)
+    llm_recipient = copy.deepcopy(llm_recipient_base)
+    llm_donor = copy.deepcopy(llm_donor_base)
 
-        LOGGER.info(f"######## PATCH {i + 1} ##########")
-        LOGGER.info(
-            tokenizer.decode(
-                inputs["input_ids"][:, p.patch_token_idx : p.patch_token_idx + 1]
-                .squeeze()
-                .tolist()
-            )
-        )
-        LOGGER.info(
-            f"Patch token start: {p.patch_token_idx}, Patch token end: {p.patch_token_idx}"
-        )
+    for idx in range(len(inputs["input_ids"][0])):
+        LOGGER.info(f"######## PATCH {idx} ##########")
+        LOGGER.info(f"Token: {tokenizer.decode(inputs['input_ids'][0, idx])}")
+        if idx in patches and patches[idx].patch_layers:
+            p = patches[idx]
 
-        if p.patch_layers is not None:
-            LOGGER.info(p.patch_layers)
+            # Reset models for patching
+            llm_recipient = copy.deepcopy(llm_recipient_base)
+            llm_donor = copy.deepcopy(llm_donor_base)
+
+            LOGGER.info(f"Patching layers: {p.patch_layers}")
             for layer_idx in p.patch_layers:
                 if dropout_strategy == "layer" and random.random() < patch_dropout:
                     LOGGER.info(f"Skipping layer {layer_idx}")
@@ -294,16 +289,65 @@ def run_patching_experiment(
                             physical_name,
                         )
         else:
-            LOGGER.info("No patching")
+            LOGGER.info(f"No patching for token {idx}")
 
         # Get the patched output
         with torch.no_grad():
             patched_output = llm_recipient(
-                inputs["input_ids"][:, p.patch_token_idx : p.patch_token_idx + 1],
+                inputs["input_ids"][:, idx : idx + 1],
                 use_cache=True,
                 past_key_values=past_key_values,
             )
             past_key_values = patched_output.past_key_values
+
+        # # Reset models for new patching
+        # llm_recipient = copy.deepcopy(llm_recipient_base)
+        # llm_donor = copy.deepcopy(llm_donor_base)
+
+        # LOGGER.info(f"######## PATCH {i + 1} ##########")
+        # LOGGER.info(
+        #     tokenizer.decode(
+        #         inputs["input_ids"][:, p.patch_token_idx : p.patch_token_idx + 1]
+        #         .squeeze()
+        #         .tolist()
+        #     )
+        # )
+        # LOGGER.info(
+        #     f"Patch token start: {p.patch_token_idx}, Patch token end: {p.patch_token_idx}"
+        # )
+
+        # if p.patch_layers is not None:
+        #     LOGGER.info(p.patch_layers)
+        #     for layer_idx in p.patch_layers:
+        #         if dropout_strategy == "layer" and random.random() < patch_dropout:
+        #             LOGGER.info(f"Skipping layer {layer_idx}")
+        #             continue
+        #         for logical_name, physical_name in model_config.items():
+        #             PATCH_FLAG = (
+        #                 random.random() < patch_dropout
+        #                 if dropout_strategy == "matrix"
+        #                 else True
+        #             )
+        #             if PATCH_FLAG and asdict(p.targets).get(logical_name, False):
+        #                 # LOGGER.info(f"Patching {logical_name} for layer {layer_idx}")
+        #                 patch_component(
+        #                     llm_recipient,
+        #                     llm_donor,
+        #                     model_config["layers"],
+        #                     layer_idx,
+        #                     physical_name,
+        #                 )
+        # else:
+        #     LOGGER.info("No patching")
+
+        # # Get the patched output
+        # with torch.no_grad():
+        #     patched_output = llm_recipient(
+        #         inputs["input_ids"][:, p.patch_token_idx : p.patch_token_idx + 1],
+        #         use_cache=True,
+        #         past_key_values=past_key_values,
+        #     )
+        #     past_key_values = patched_output.past_key_values
 
     probs = torch.softmax(patched_output.logits[0, -1], dim=-1)
     topk_probs, topk_indices = torch.topk(probs, top_k)
