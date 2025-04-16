@@ -117,7 +117,7 @@ def get_layers_dict(n_layers):
     return layers_dict
 
 
-def get_patches(ex, n_layers, test_sentence_template, tokenizer):
+def get_patches(ex, patch_config, n_layers, test_sentence_template, tokenizer):
     layers_dict = get_layers_dict(n_layers)
 
     # TODO: In general, I don't like how this works
@@ -126,73 +126,96 @@ def get_patches(ex, n_layers, test_sentence_template, tokenizer):
     movie = " " + ex["movie_title"]
     preposition = " alongside"
 
-    # TODO: I don't like this...
     test_sentence = test_sentence_template.format(**ex, preposition=preposition)
     inputs = tokenizer(test_sentence, return_tensors="pt").to(DEVICE)
-
-    # Set up first entity patch config
-    first_entity_tokens = tokenizer.encode(
-        first_entity, add_special_tokens=False, return_tensors="pt"
-    )
-
-    first_entity_start_idx, first_entity_end_idx = find_sublist_index(
-        inputs["input_ids"], first_entity_tokens
-    )
-    first_entity_patch_targets = PatchTargets(
-        mlp_up=True, mlp_down=True, o=True, q=False, gate=True
-    )
-
-    first_entity_patch_config = {
-        "indeces": (first_entity_start_idx, first_entity_end_idx),
-        "targets": first_entity_patch_targets,
-        "patch_layers": layers_dict["all"],
-    }
-
-    # Set up movie patch config
-    movie_tokens = tokenizer.encode(
-        movie, add_special_tokens=False, return_tensors="pt"
-    )
-    movie_start_idx, movie_end_idx = find_sublist_index(
-        inputs["input_ids"], movie_tokens
-    )
-    movie_patch_targets = PatchTargets(
-        mlp_up=True, mlp_down=True, o=True, q=False, gate=True
-    )
-
-    movie_patch_config = {
-        "indeces": (movie_start_idx, movie_end_idx),
-        "targets": movie_patch_targets,
-        "patch_layers": layers_dict["all"],
-    }
-
-    # Set up preposition patch config
-    preposition_tokens = tokenizer.encode(
-        preposition, add_special_tokens=False, return_tensors="pt"
-    )
-    preposition_start_idx, preposition_end_idx = find_sublist_index(
-        inputs["input_ids"], preposition_tokens
-    )
-    preposition_patch_targets = PatchTargets(
-        mlp_up=True, mlp_down=True, o=True, q=False, gate=True
-    )
-
-    preposition_patch_config = {
-        "indeces": (preposition_start_idx, preposition_end_idx),
-        "targets": preposition_patch_targets,
-        "patch_layers": layers_dict["all"],
-    }
-
-    # TODO: These variables could use better names
-    patch_configs = [
-        first_entity_patch_config,
-        movie_patch_config,
-        preposition_patch_config,
-    ]
+    input_ids = inputs["input_ids"]
 
     patches = {}
-    for patch_config in patch_configs:
-        for token_idx in range(patch_config["indeces"][0], patch_config["indeces"][1]):
-            patches[token_idx] = Patch(token_idx, **patch_config)
+    for patch_spec in patch_config["patches"]:
+        # TODO: I hate this and need to refactor to handle the preoposition, etc.
+        # Get the span text either from the example or directly
+        if "value" in patch_spec:
+            span = patch_spec["value"]
+        else:
+            span = patch_spec.get("prefix", "") + ex[patch_spec["key"]]
+
+        tokens = tokenizer.encode(span, add_special_tokens=False, return_tensors="pt")
+        start_idx, end_idx = find_sublist_index(input_ids, tokens)
+
+        targets = PatchTargets(**patch_spec["targets"])
+        patch_layers = layers_dict[patch_spec["layers"]]
+
+        for token_idx in range(start_idx, end_idx):
+            patches[token_idx] = Patch(
+                token_idx,
+                indeces=(start_idx, end_idx),
+                targets=targets,
+                patch_layers=patch_layers,
+            )
+
+    # # Set up first entity patch config
+    # first_entity_tokens = tokenizer.encode(
+    #     first_entity, add_special_tokens=False, return_tensors="pt"
+    # )
+
+    # first_entity_start_idx, first_entity_end_idx = find_sublist_index(
+    #     inputs["input_ids"], first_entity_tokens
+    # )
+    # first_entity_patch_targets = PatchTargets(
+    #     mlp_up=True, mlp_down=True, o=True, q=False, gate=True
+    # )
+
+    # first_entity_patch_config = {
+    #     "indeces": (first_entity_start_idx, first_entity_end_idx),
+    #     "targets": first_entity_patch_targets,
+    #     "patch_layers": layers_dict["all"],
+    # }
+
+    # # Set up movie patch config
+    # movie_tokens = tokenizer.encode(
+    #     movie, add_special_tokens=False, return_tensors="pt"
+    # )
+    # movie_start_idx, movie_end_idx = find_sublist_index(
+    #     inputs["input_ids"], movie_tokens
+    # )
+    # movie_patch_targets = PatchTargets(
+    #     mlp_up=True, mlp_down=True, o=True, q=False, gate=True
+    # )
+
+    # movie_patch_config = {
+    #     "indeces": (movie_start_idx, movie_end_idx),
+    #     "targets": movie_patch_targets,
+    #     "patch_layers": layers_dict["all"],
+    # }
+
+    # # Set up preposition patch config
+    # preposition_tokens = tokenizer.encode(
+    #     preposition, add_special_tokens=False, return_tensors="pt"
+    # )
+    # preposition_start_idx, preposition_end_idx = find_sublist_index(
+    #     inputs["input_ids"], preposition_tokens
+    # )
+    # preposition_patch_targets = PatchTargets(
+    #     mlp_up=True, mlp_down=True, o=True, q=False, gate=True
+    # )
+
+    # preposition_patch_config = {
+    #     "indeces": (preposition_start_idx, preposition_end_idx),
+    #     "targets": preposition_patch_targets,
+    #     "patch_layers": layers_dict["all"],
+    # }
+
+    # # TODO: These variables could use better names
+    # patch_configs = [
+    #     first_entity_patch_config,
+    #     movie_patch_config,
+    #     preposition_patch_config,
+    # ]
+
+    # patches = {}
+    # for patch_config in patch_configs:
+    #     for token_idx in range(patch_config["indeces"][0], patch_config["indeces"][1]):
+    #         patches[token_idx] = Patch(token_idx, **patch_config)
 
     return patches, inputs
 
@@ -303,19 +326,17 @@ def run_patching_experiment(
     return results
 
 
-def main(config_path):
-    # TODO: Clean up these config settings and path variable names
-    with open(config_path, "r") as f:
-        config = yaml.safe_load(f)
-
-    SMOKE_TEST = config["smoke_test"]
-    model_name = config["model"]["pretrained"]
-    experiment_name = config["experiment_name"]
+def main(experiment_config, patch_config):
+    SMOKE_TEST = experiment_config["smoke_test"]
+    model_name = experiment_config["model"]["pretrained"]
+    experiment_name = experiment_config["experiment_name"]
 
     # Set up dirs
-    metadata_path = config["paths"]["metadata"]
+    metadata_path = experiment_config["paths"]["metadata"]
     timestamp_dir = (
-        TIMESTAMP + "_dropout_" + str(config["experiment_config"]["patch_dropout"])
+        TIMESTAMP
+        + "_dropout_"
+        + str(experiment_config["experiment_settings"]["patch_dropout"])
     )
     timestamp_dir = timestamp_dir + "_smoke_test" if SMOKE_TEST else timestamp_dir
     output_dir = EXPERIMENTS_DIR / experiment_name / timestamp_dir
@@ -323,13 +344,13 @@ def main(config_path):
 
     # Load models
     pretrained = MODEL_TO_HFID[model_name]
-    finetuned_path = config["paths"]["finetuned"]
+    finetuned_path = experiment_config["paths"]["finetuned"]
 
     tokenizer = AutoTokenizer.from_pretrained(pretrained)
     llm_pretrained = AutoModelForCausalLM.from_pretrained(pretrained).to(DEVICE)
     llm_finetuned = AutoModelForCausalLM.from_pretrained(finetuned_path).to(DEVICE)
 
-    if config["model"]["donor_model"] == "finetuned":
+    if experiment_config["model"]["donor_model"] == "finetuned":
         llm_donor_base = llm_finetuned
         llm_recipient_base = llm_pretrained
     else:
@@ -343,14 +364,16 @@ def main(config_path):
     model_config = MODEL_CONFIGS[model_name]
     n_layers = len(get_attr(llm_pretrained, model_config["layers"]))
 
-    experiment_config = config["experiment_config"]
+    experiment_settings = experiment_config["experiment_settings"]
 
-    test_sentence_template = config["templates"]["test_sentence_template"]
+    test_sentence_template = experiment_config["templates"]["test_sentence_template"]
 
     results = []
     limit = 5 if SMOKE_TEST else None
     for ex in tqdm(metadata[:limit]):
-        patches, inputs = get_patches(ex, n_layers, test_sentence_template, tokenizer)
+        patches, inputs = get_patches(
+            ex, patch_config, n_layers, test_sentence_template, tokenizer
+        )
         results.append(
             run_patching_experiment(
                 ex,
@@ -360,12 +383,13 @@ def main(config_path):
                 inputs,
                 llm_recipient_base=llm_recipient_base,
                 llm_donor_base=llm_donor_base,
-                **experiment_config,
+                **experiment_settings,
             )
         )
 
     results_final = {
-        "config": config,
+        "experiment_settings": experiment_settings,
+        "patch_config": patch_config,
         "results": results,
     }
 
@@ -374,16 +398,46 @@ def main(config_path):
 
 
 if __name__ == "__main__":
-    # Note: Use argparse to allow submission of config file via slurm
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--config",
+        "--experiment_config",
         type=str,
         default="config_experiments.yaml",
-        help="Path to the config file",
+        help="Path to the experiment config file",
+    )
+    parser.add_argument(
+        "--patch_config",
+        type=str,
+        default="config_patches.yaml",
+        help="Path to the patch config file",
+    )
+    parser.add_argument(
+        "--override",
+        nargs="*",
+        default=[],
+        help="Override config entries with KEY=VALUE pairs",
     )
     args = parser.parse_args()
 
-    config_path = EXPERIMENTS_CONFIG_DIR / args.config
-    LOGGER.info(f"Running experiments with config: {config_path}")
-    main(config_path)
+    experiment_config_path = EXPERIMENTS_CONFIG_DIR / args.experiment_config
+    patch_config_path = EXPERIMENTS_CONFIG_DIR / args.patch_config
+    LOGGER.info(f"Running experiments with experiment config: {experiment_config_path}")
+    LOGGER.info(f"Running experiments with patch config: {patch_config_path}")
+
+    with open(experiment_config_path, "r") as f:
+        experiment_config = yaml.safe_load(f)
+    with open(patch_config_path, "r") as f:
+        patch_config = yaml.safe_load(f)
+
+    def set_nested(config, key_path, value):
+        keys = key_path.split(".")
+        for key in keys[:-1]:
+            config = config.setdefault(key, {})
+        config[keys[-1]] = value
+
+    # Usage: --override experiment_config.patch_dropout=0.1
+    for item in args.override:
+        key, val = item.split("=", 1)
+        set_nested(experiment_config, key, yaml.safe_load(val))
+
+    main(experiment_config, patch_config)
