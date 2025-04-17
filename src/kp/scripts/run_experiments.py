@@ -131,7 +131,21 @@ def get_patches(ex, patch_config, n_layers, test_sentence_template, tokenizer):
     input_ids = inputs["input_ids"]
 
     patches = {}
-    for patch_spec in patch_config["patches"]:
+    # Fill all patches with "other" if present
+    if "other" in patch_config["patches"]:
+        patch_spec = patch_config["patches"]["other"]
+        for token_idx in range(len(input_ids[0])):
+            patches[token_idx] = Patch(
+                token_idx,
+                indeces=(0, len(input_ids[0])),
+                targets=PatchTargets(**patch_spec["targets"]),
+                patch_layers=layers_dict[patch_spec["layers"]],
+            )
+
+    # Replace other specified patches
+    for key, patch_spec in patch_config["patches"].items():
+        if key == "other":
+            continue
         # TODO: I hate this and need to refactor to handle the preoposition, etc.
         # Get the span text either from the example or directly
         if "value" in patch_spec:
@@ -152,71 +166,6 @@ def get_patches(ex, patch_config, n_layers, test_sentence_template, tokenizer):
                 targets=targets,
                 patch_layers=patch_layers,
             )
-
-    # # Set up first entity patch config
-    # first_entity_tokens = tokenizer.encode(
-    #     first_entity, add_special_tokens=False, return_tensors="pt"
-    # )
-
-    # first_entity_start_idx, first_entity_end_idx = find_sublist_index(
-    #     inputs["input_ids"], first_entity_tokens
-    # )
-    # first_entity_patch_targets = PatchTargets(
-    #     mlp_up=True, mlp_down=True, o=True, q=False, gate=True
-    # )
-
-    # first_entity_patch_config = {
-    #     "indeces": (first_entity_start_idx, first_entity_end_idx),
-    #     "targets": first_entity_patch_targets,
-    #     "patch_layers": layers_dict["all"],
-    # }
-
-    # # Set up movie patch config
-    # movie_tokens = tokenizer.encode(
-    #     movie, add_special_tokens=False, return_tensors="pt"
-    # )
-    # movie_start_idx, movie_end_idx = find_sublist_index(
-    #     inputs["input_ids"], movie_tokens
-    # )
-    # movie_patch_targets = PatchTargets(
-    #     mlp_up=True, mlp_down=True, o=True, q=False, gate=True
-    # )
-
-    # movie_patch_config = {
-    #     "indeces": (movie_start_idx, movie_end_idx),
-    #     "targets": movie_patch_targets,
-    #     "patch_layers": layers_dict["all"],
-    # }
-
-    # # Set up preposition patch config
-    # preposition_tokens = tokenizer.encode(
-    #     preposition, add_special_tokens=False, return_tensors="pt"
-    # )
-    # preposition_start_idx, preposition_end_idx = find_sublist_index(
-    #     inputs["input_ids"], preposition_tokens
-    # )
-    # preposition_patch_targets = PatchTargets(
-    #     mlp_up=True, mlp_down=True, o=True, q=False, gate=True
-    # )
-
-    # preposition_patch_config = {
-    #     "indeces": (preposition_start_idx, preposition_end_idx),
-    #     "targets": preposition_patch_targets,
-    #     "patch_layers": layers_dict["all"],
-    # }
-
-    # # TODO: These variables could use better names
-    # patch_configs = [
-    #     first_entity_patch_config,
-    #     movie_patch_config,
-    #     preposition_patch_config,
-    # ]
-
-    # patches = {}
-    # for patch_config in patch_configs:
-    #     for token_idx in range(patch_config["indeces"][0], patch_config["indeces"][1]):
-    #         patches[token_idx] = Patch(token_idx, **patch_config)
-
     return patches, inputs
 
 
