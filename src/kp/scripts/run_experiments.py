@@ -134,12 +134,15 @@ def get_patches(ex, patch_config, n_layers, test_sentence_template, tokenizer):
     # Fill all patches with "other" if present
     if "other" in patch_config["patches"]:
         patch_spec = patch_config["patches"]["other"]
+        patch_layers = (
+            layers_dict[patch_spec["layers"]] if patch_spec["layers"] else None
+        )
         for token_idx in range(len(input_ids[0])):
             patches[token_idx] = Patch(
                 token_idx,
                 indeces=(0, len(input_ids[0])),
                 targets=PatchTargets(**patch_spec["targets"]),
-                patch_layers=layers_dict[patch_spec["layers"]],
+                patch_layers=patch_layers,
             )
 
     # Replace other specified patches
@@ -196,6 +199,9 @@ def run_patching_experiment(
     for idx in range(len(inputs["input_ids"][0])):
         # LOGGER.info(f"######## PATCH {idx} ##########")
         # LOGGER.info(f"Token: {tokenizer.decode(inputs['input_ids'][0, idx])}")
+        dropout = {
+            "layers": [],
+        }
         if idx in patches and patches[idx].patch_layers:
             p = patches[idx]
 
@@ -204,9 +210,6 @@ def run_patching_experiment(
             llm_donor = copy.deepcopy(llm_donor_base)
 
             # LOGGER.info(f"Patching layers: {p.patch_layers}")
-            dropout = {
-                "layers": [],
-            }
             for layer_idx in p.patch_layers:
                 if dropout_strategy == "layer" and random.random() < patch_dropout:
                     # LOGGER.info(f"Skipping layer {layer_idx}")
@@ -279,16 +282,15 @@ def main(experiment_config, patch_config):
     SMOKE_TEST = experiment_config["smoke_test"]
     model_name = experiment_config["model"]["pretrained"]
     experiment_name = experiment_config["experiment_name"]
+    timestamp = experiment_config["timestamp"]
 
     # Set up dirs
     metadata_path = experiment_config["paths"]["metadata"]
-    timestamp_dir = (
-        TIMESTAMP
-        + "_dropout_"
-        + str(experiment_config["experiment_settings"]["patch_dropout"])
+    timestamp_dir = timestamp + "_smoke_test" if SMOKE_TEST else timestamp
+    hyperparams_dir = "dropout_" + str(
+        experiment_config["experiment_settings"]["patch_dropout"]
     )
-    timestamp_dir = timestamp_dir + "_smoke_test" if SMOKE_TEST else timestamp_dir
-    output_dir = EXPERIMENTS_DIR / experiment_name / timestamp_dir
+    output_dir = EXPERIMENTS_DIR / experiment_name / timestamp_dir / hyperparams_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load models
@@ -361,6 +363,12 @@ if __name__ == "__main__":
         help="Path to the patch config file",
     )
     parser.add_argument(
+        "--timestamp",
+        type=str,
+        default=TIMESTAMP,
+        help="Timestamp for the experiment",
+    )
+    parser.add_argument(
         "--override",
         nargs="*",
         default=[],
@@ -377,6 +385,9 @@ if __name__ == "__main__":
         experiment_config = yaml.safe_load(f)
     with open(patch_config_path, "r") as f:
         patch_config = yaml.safe_load(f)
+
+    # Set timestamp passed from command line so experiments scheduled with slurm all have the same timestamp
+    experiment_config["timestamp"] = args.timestamp
 
     def set_nested(config, key_path, value):
         keys = key_path.split(".")

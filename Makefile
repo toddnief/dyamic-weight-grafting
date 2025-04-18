@@ -8,8 +8,8 @@ scripts_dir = ${workdir}
 slurm_dir = ${workdir}slurm/
 logs_dir = ${workdir}logs/
 
-DATE := $(shell date +"%Y%m%d_%H%M%S")
-LOG_FILE_PREFIX = ${logs_dir}${DATE}
+TIMESTAMP := $(shell date +"%Y-%m-%d_%H-%M-%S")
+LOG_FILE_PREFIX = ${logs_dir}${TIMESTAMP}
 output_file = ${LOG_FILE_PREFIX}_res.txt
 err_file = ${LOG_FILE_PREFIX}_err.txt
 
@@ -36,11 +36,12 @@ create_datasets:
 	--error="$(err_file)" \
 	$(slurm_dir)create_datasets.slurm
 
-# Usage: make experiments CONFIG=config_experiments.yaml
+# Usage: make experiments CONFIG=config_experiments.yaml PATCH_CONFIG=config_patches.yaml
 .PHONY: experiments
 experiments:
 	${SBATCH} \
 	--partition=$(PARTITION) \
 	--output="$(output_file)" \
 	--error="$(err_file)" \
+	--export=ALL,TIMESTAMP=$(TIMESTAMP) \
 	$(slurm_dir)experiments.slurm
