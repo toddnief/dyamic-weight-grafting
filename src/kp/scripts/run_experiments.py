@@ -172,33 +172,21 @@ def get_patches(ex, patch_config, n_layers, test_sentence_template, tokenizer):
     return patches, inputs
 
 
-def run_patching_experiment(
-    ex,
-    patches,
-    model_config,
-    tokenizer,
-    inputs,
+def run_patched_inference(
     llm_recipient_base,
     llm_donor_base,
-    target_key,
+    model_config,
+    inputs,
+    patches,
     patch_dropout=0.0,
     dropout_strategy="layer",  # choices: layer, matrix
-    top_k=20,
 ):
-    target_name = ex[target_key]
-    target_token_idx = tokenizer.encode(" " + target_name, add_special_tokens=False)[0]
-    target_token = tokenizer.decode(target_token_idx)
-
-    ex_id = ex["id"]
-
     # Initialize past key values and models before loop
     past_key_values = None
     llm_recipient = copy.deepcopy(llm_recipient_base)
     llm_donor = copy.deepcopy(llm_donor_base)
 
     for idx in range(len(inputs["input_ids"][0])):
-        # LOGGER.info(f"######## PATCH {idx} ##########")
-        # LOGGER.info(f"Token: {tokenizer.decode(inputs['input_ids'][0, idx])}")
         dropout = {
             "layers": [],
         }
@@ -209,10 +197,8 @@ def run_patching_experiment(
             llm_recipient = copy.deepcopy(llm_recipient_base)
             llm_donor = copy.deepcopy(llm_donor_base)
 
-            # LOGGER.info(f"Patching layers: {p.patch_layers}")
             for layer_idx in p.patch_layers:
                 if dropout_strategy == "layer" and random.random() < patch_dropout:
-                    # LOGGER.info(f"Skipping layer {layer_idx}")
                     dropout["layers"].append(layer_idx)
                     continue
                 for logical_name, physical_name in model_config.items():
@@ -232,7 +218,6 @@ def run_patching_experiment(
                         )
         else:
             pass
-            # LOGGER.info(f"No patching for token {idx}")
 
         # Get the patched output
         with torch.no_grad():
@@ -244,6 +229,48 @@ def run_patching_experiment(
             past_key_values = patched_output.past_key_values
 
     probs = torch.softmax(patched_output.logits[0, -1], dim=-1)
+    return probs, dropout
+
+
+def run_patching_experiment(
+    ex,
+    patches,
+    model_config,
+    tokenizer,
+    inputs,
+    llm_recipient_base,
+    llm_donor_base,
+    patching=True,
+    target_key="second_actor",
+    patch_dropout=0.0,
+    dropout_strategy="layer",  # choices: layer, matrix
+    top_k=20,
+):
+    target_name = ex[target_key]
+    target_token_idx = tokenizer.encode(" " + target_name, add_special_tokens=False)[0]
+    target_token = tokenizer.decode(target_token_idx)
+
+    ex_id = ex["id"]
+
+    # TODO: Figure out where to pass the configs for patched inference, etc.
+    if patching:
+        probs, dropout = run_patched_inference(
+            llm_recipient_base,
+            llm_donor_base,
+            model_config,
+            inputs,
+            patches,
+            patch_dropout,
+            dropout_strategy,
+        )
+    else:
+        dropout = {
+            "layers": [],
+        }
+        probs = torch.softmax(
+            llm_recipient_base(inputs["input_ids"]).logits[0, -1], dim=-1
+        )
+
     topk_probs, topk_indices = torch.topk(probs, top_k)
     target_token_prob = probs[target_token_idx].item()
 
@@ -257,12 +284,6 @@ def run_patching_experiment(
                 "probability": prob,
             }
         )
-
-    # LOGGER.info("##### FINAL patched_output ######")
-    # LOGGER.info(f"Decoded top token: {top_predictions[0]['token']}")
-    # LOGGER.info(f"Decoded top prob: {top_predictions[0]['probability']}")
-    # LOGGER.info(f"Target token: {target_name}")
-    # LOGGER.info(f"Target token prob: {target_token_prob}")
 
     results = {
         "ex_id": ex_id,
@@ -287,9 +308,13 @@ def main(experiment_config, patch_config):
     # Set up dirs
     metadata_path = experiment_config["paths"]["metadata"]
     timestamp_dir = timestamp + "_smoke_test" if SMOKE_TEST else timestamp
-    hyperparams_dir = "dropout_" + str(
-        experiment_config["experiment_settings"]["patch_dropout"]
-    )
+    if experiment_config["experiment_settings"]["patching"]:
+        hyperparams_dir = "dropout_" + str(
+            experiment_config["experiment_settings"]["patch_dropout"]
+        )
+    else:
+        hyperparams_dir = "no_patching"
+
     output_dir = EXPERIMENTS_DIR / experiment_name / timestamp_dir / hyperparams_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
