@@ -233,17 +233,19 @@ def run_patched_inference(
 
 def main(experiment_config, patch_config):
     SMOKE_TEST = experiment_config["smoke_test"]
+    PATCHING = experiment_config["patching"]
     model_name = experiment_config["model"]["pretrained"]
     experiment_name = experiment_config["experiment_name"]
     timestamp = experiment_config["timestamp"]
 
+    inference_settings = experiment_config["inference_settings"]
+    reporting_settings = experiment_config["reporting_settings"]
+
     # Set up dirs
     metadata_path = experiment_config["paths"]["metadata"]
     timestamp_dir = timestamp + "_smoke_test" if SMOKE_TEST else timestamp
-    if experiment_config["inference_settings"]["patching"]:
-        hyperparams_dir = "dropout_" + str(
-            experiment_config["inference_settings"]["patch_dropout"]
-        )
+    if PATCHING:
+        hyperparams_dir = "dropout_" + str(inference_settings["patch_dropout"])
     else:
         hyperparams_dir = "no_patching"
 
@@ -272,8 +274,6 @@ def main(experiment_config, patch_config):
     model_config = MODEL_CONFIGS[model_name]
     n_layers = len(get_attr(llm_pretrained, model_config["layers"]))
 
-    inference_settings = experiment_config["inference_settings"]
-
     test_sentence_template = experiment_config["templates"]["test_sentence_template"]
 
     limit = 5 if SMOKE_TEST else None
@@ -285,7 +285,7 @@ def main(experiment_config, patch_config):
             tokenizer,
         )
 
-        if inference_settings["patching"]:
+        if PATCHING:
             patches = get_patches(
                 ex,
                 patch_config,
@@ -309,13 +309,13 @@ def main(experiment_config, patch_config):
                 llm_recipient_base(inputs["input_ids"]).logits[0, -1], dim=-1
             )
 
-        target_name = ex[inference_settings["target_key"]]
+        target_name = ex[reporting_settings["target_key"]]
         target_token_idx = tokenizer.encode(
             " " + target_name, add_special_tokens=False
         )[0]
         target_token = tokenizer.decode(target_token_idx)
 
-        topk_probs, topk_indices = torch.topk(probs, inference_settings["top_k"])
+        topk_probs, topk_indices = torch.topk(probs, reporting_settings["top_k"])
         target_token_prob = probs[target_token_idx].item()
 
         top_predictions = []
