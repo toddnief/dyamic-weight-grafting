@@ -16,7 +16,7 @@ from kp.utils.constants import (
     EXPERIMENTS_DIR,
     LOGGER,
     MODEL_TO_HFID,
-    PATCHES_CONFIG_DIR,
+    PATCH_CONFIG_DIR,
     TIMESTAMP,
 )
 
@@ -287,6 +287,7 @@ def main(experiment_config, patch_config):
     PATCHING = experiment_config["patching"]
     model_name = experiment_config["model"]["pretrained"]
     dataset_name = experiment_config["dataset_name"]
+    patch_direction = experiment_config["model"]["patch_direction"]
     patch_config_filename = experiment_config["patch_config_filename"]
     patch_description = patch_config_filename.split(".")[0]
     patch_description = (
@@ -307,31 +308,44 @@ def main(experiment_config, patch_config):
     else:
         hyperparams_dir = "no_patching"
 
-    EXPERIMENT_NAME = f"{dataset_name}_{model_name}_{patch_description}"
+    EXPERIMENT_NAME = (
+        f"{dataset_name}_{model_name}_{patch_direction}_{patch_description}"
+    )
     output_dir = EXPERIMENTS_DIR / EXPERIMENT_NAME / timestamp_dir / hyperparams_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load models
     pretrained = MODEL_TO_HFID[model_name]
-    finetuned_path = experiment_config["paths"]["finetuned"]
+    both_directions_path = experiment_config["paths"]["both_directions"]
+    one_direction_path = experiment_config["paths"]["one_direction"]
 
     tokenizer = AutoTokenizer.from_pretrained(pretrained)
-    llm_pretrained = AutoModelForCausalLM.from_pretrained(pretrained).to(DEVICE)
-    llm_finetuned = AutoModelForCausalLM.from_pretrained(finetuned_path).to(DEVICE)
 
-    if experiment_config["model"]["recipient_model"] == "finetuned":
-        llm_recipient_base = llm_finetuned
-        llm_donor_base = llm_pretrained
-    else:
-        llm_recipient_base = llm_pretrained
-        llm_donor_base = llm_finetuned
+    if patch_direction == "sft2pre":
+        llm_donor_base = AutoModelForCausalLM.from_pretrained(both_directions_path).to(
+            DEVICE
+        )
+        llm_recipient_base = AutoModelForCausalLM.from_pretrained(pretrained).to(DEVICE)
+
+    elif patch_direction == "pre2sft":
+        llm_donor_base = AutoModelForCausalLM.from_pretrained(pretrained).to(DEVICE)
+        llm_recipient_base = AutoModelForCausalLM.from_pretrained(
+            both_directions_path
+        ).to(DEVICE)
+    elif patch_direction == "both2one":
+        llm_donor_base = AutoModelForCausalLM.from_pretrained(both_directions_path).to(
+            DEVICE
+        )
+        llm_recipient_base = AutoModelForCausalLM.from_pretrained(
+            one_direction_path
+        ).to(DEVICE)
 
     with open(metadata_path, "r") as f:
         metadata = [json.loads(line) for line in f]
 
     # Load experiment config
     model_config = MODEL_CONFIGS[model_name]
-    n_layers = len(get_attr(llm_pretrained, model_config["layers"]))
+    n_layers = len(get_attr(llm_recipient_base, model_config["layers"]))
 
     test_sentence_template = experiment_config["templates"]["test_sentence_template"]
 
@@ -440,7 +454,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     experiment_config_path = EXPERIMENTS_CONFIG_DIR / args.experiment_config
-    patch_config_path = PATCHES_CONFIG_DIR / args.patch_config
+    patch_config_path = PATCH_CONFIG_DIR / args.patch_config
     LOGGER.info(f"Running experiments with experiment config: {experiment_config_path}")
     LOGGER.info(f"Running experiments with patch config: {patch_config_path}")
 
