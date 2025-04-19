@@ -72,16 +72,56 @@ def find_sublist_index(full_list, sublist):
     raise ValueError("Sublist not found")
 
 
-def parse_layers(patch_layers):
-    expanded_layers = []
-    for item in patch_layers:
-        if isinstance(item, range):
-            expanded_layers.extend(item)
-        elif isinstance(item, int):
-            expanded_layers.append(item)
+def parse_layers(patch_layers, layers_dict=None):
+    """
+    Parse layer specifications into a list of layer indices.
+
+    Args:
+        patch_layers: Can be None, a string key, a list of items, or a single item
+        layers_dict: Dictionary mapping string keys to lists of layer indices
+
+    Returns:
+        List of layer indices or None if patch_layers is None
+    """
+    if patch_layers is None:
+        return None
+
+    if isinstance(patch_layers, str):
+        # If it's a string, look it up in layers_dict
+        if layers_dict is not None and patch_layers in layers_dict:
+            return layers_dict[patch_layers]
         else:
-            raise ValueError(f"Invalid patch layer format: {item}")
-    return sorted(set(expanded_layers))  # Sort and remove duplicates
+            raise ValueError(f"Unknown layer group: {patch_layers}")
+
+    if isinstance(patch_layers, list):
+        # If it's a list, process each item
+        expanded_layers = []
+        for item in patch_layers:
+            if (
+                isinstance(item, str)
+                and layers_dict is not None
+                and item in layers_dict
+            ):
+                # If it's a string key in layers_dict, add those layers
+                expanded_layers.extend(layers_dict[item])
+            elif isinstance(item, (int, range)):
+                # If it's an int or range, add it directly
+                if isinstance(item, range):
+                    expanded_layers.extend(item)
+                else:
+                    expanded_layers.append(item)
+            else:
+                raise ValueError(f"Invalid patch layer format: {item}")
+        return sorted(set(expanded_layers))  # Sort and remove duplicates
+
+    if isinstance(patch_layers, (int, range)):
+        # Handle single int or range
+        if isinstance(patch_layers, range):
+            return sorted(set(patch_layers))
+        else:
+            return [patch_layers]
+
+    raise ValueError(f"Invalid patch layers format: {patch_layers}")
 
 
 def get_attr(obj, attr_path):
@@ -133,9 +173,8 @@ def get_patches(ex, patch_config, n_layers, tokenizer, input_ids):
     # Fill all patches with "other" if present
     if "other" in patch_config["patches"]:
         patch_spec = patch_config["patches"]["other"]
-        patch_layers = (
-            layers_dict[patch_spec["layers"]] if patch_spec["layers"] else None
-        )
+        patch_layers = parse_layers(patch_spec.get("layers"), layers_dict)
+
         for token_idx in range(len(input_ids[0])):
             patches[token_idx] = Patch(
                 token_idx,
@@ -159,7 +198,7 @@ def get_patches(ex, patch_config, n_layers, tokenizer, input_ids):
         start_idx, end_idx = find_sublist_index(input_ids, tokens)
 
         targets = PatchTargets(**patch_spec["targets"])
-        patch_layers = layers_dict[patch_spec["layers"]]
+        patch_layers = parse_layers(patch_spec.get("layers"), layers_dict)
 
         for token_idx in range(start_idx, end_idx):
             patches[token_idx] = Patch(
@@ -181,8 +220,8 @@ def run_patched_inference(
     patch_dropout=0.0,
     dropout_strategy="layer",  # choices: layer, matrix
 ):
-    # Initialize past key values and models before loop
-    past_key_values = None
+    # Initialize cache and models before loop
+    kv_cache = None
     llm_recipient = copy.deepcopy(llm_recipient_base)
     llm_donor = copy.deepcopy(llm_donor_base)
 
@@ -220,12 +259,22 @@ def run_patched_inference(
 
         # Get the patched output
         with torch.no_grad():
-            patched_output = llm_recipient(
-                inputs["input_ids"][:, idx : idx + 1],
-                use_cache=True,
-                past_key_values=past_key_values,
-            )
-            past_key_values = patched_output.past_key_values
+            # Try the new cache API first, fall back to past_key_values if needed
+            try:
+                patched_output = llm_recipient(
+                    inputs["input_ids"][:, idx : idx + 1],
+                    use_cache=True,
+                    cache=kv_cache,
+                )
+                kv_cache = patched_output.cache
+            except TypeError:
+                # Fall back to the old API
+                patched_output = llm_recipient(
+                    inputs["input_ids"][:, idx : idx + 1],
+                    use_cache=True,
+                    past_key_values=kv_cache,
+                )
+                kv_cache = patched_output.past_key_values
 
     probs = torch.softmax(patched_output.logits[0, -1], dim=-1)
     return probs, dropout
@@ -244,6 +293,7 @@ def main(experiment_config, patch_config):
     # Set up dirs
     metadata_path = experiment_config["paths"]["metadata"]
     timestamp_dir = timestamp + "_smoke_test" if SMOKE_TEST else timestamp
+    timestamp_dir = timestamp_dir + "_" + model_name
     if PATCHING:
         hyperparams_dir = "dropout_" + str(inference_settings["patch_dropout"])
     else:
