@@ -1,7 +1,7 @@
 [project]
-name = "reversal"
+name = "kp"
 version = "0.1.0"
-description = "Code for running supervised fine-tuning experiments exploring the reversal curse."
+description = "Code for running supervised fine-tuning experiments exploring which model parameters store relationship information."
 readme = "README.md"
 
 [tool.setuptools.packages.find]

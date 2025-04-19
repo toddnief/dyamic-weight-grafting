@@ -247,6 +247,7 @@ def run_patched_inference(
                         else True
                     )
                     if PATCH_FLAG and asdict(p.targets).get(logical_name, False):
+                        # LOGGER.info(f"Patching {logical_name} at layer {layer_idx}")
                         patch_component(
                             llm_recipient,
                             llm_donor,
@@ -284,7 +285,14 @@ def main(experiment_config, patch_config):
     SMOKE_TEST = experiment_config["smoke_test"]
     PATCHING = experiment_config["patching"]
     model_name = experiment_config["model"]["pretrained"]
-    experiment_name = experiment_config["experiment_name"]
+    dataset_name = experiment_config["dataset_name"]
+    patch_config_filename = experiment_config["patch_config_filename"]
+    patch_description = patch_config_filename.split(".")[0]
+    patch_description = (
+        patch_description.split("config_patches_")[1]
+        if "config_patches_" in patch_description
+        else patch_description
+    )
     timestamp = experiment_config["timestamp"]
 
     inference_settings = experiment_config["inference_settings"]
@@ -293,13 +301,13 @@ def main(experiment_config, patch_config):
     # Set up dirs
     metadata_path = experiment_config["paths"]["metadata"]
     timestamp_dir = timestamp + "_smoke_test" if SMOKE_TEST else timestamp
-    timestamp_dir = timestamp_dir + "_" + model_name
     if PATCHING:
         hyperparams_dir = "dropout_" + str(inference_settings["patch_dropout"])
     else:
         hyperparams_dir = "no_patching"
 
-    output_dir = EXPERIMENTS_DIR / experiment_name / timestamp_dir / hyperparams_dir
+    EXPERIMENT_NAME = f"{dataset_name}_{model_name}_{patch_description}"
+    output_dir = EXPERIMENTS_DIR / EXPERIMENT_NAME / timestamp_dir / hyperparams_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load models
@@ -442,6 +450,9 @@ if __name__ == "__main__":
 
     # Set timestamp passed from command line so experiments scheduled with slurm all have the same timestamp
     experiment_config["timestamp"] = args.timestamp
+
+    # Split the filename from the path
+    experiment_config["patch_config_filename"] = args.patch_config.split("/")[-1]
 
     def set_nested(config, key_path, value):
         keys = key_path.split(".")
