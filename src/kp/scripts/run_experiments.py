@@ -16,6 +16,7 @@ from kp.utils.constants import (
     EXPERIMENTS_DIR,
     LOGGER,
     MODEL_TO_HFID,
+    PATCHES_CONFIG_DIR,
     TIMESTAMP,
 )
 
@@ -439,7 +440,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     experiment_config_path = EXPERIMENTS_CONFIG_DIR / args.experiment_config
-    patch_config_path = EXPERIMENTS_CONFIG_DIR / args.patch_config
+    patch_config_path = PATCHES_CONFIG_DIR / args.patch_config
     LOGGER.info(f"Running experiments with experiment config: {experiment_config_path}")
     LOGGER.info(f"Running experiments with patch config: {patch_config_path}")
 
