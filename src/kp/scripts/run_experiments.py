@@ -117,18 +117,17 @@ def get_layers_dict(n_layers):
     return layers_dict
 
 
-def get_patches(ex, patch_config, n_layers, test_sentence_template, tokenizer):
-    layers_dict = get_layers_dict(n_layers)
-
-    # TODO: In general, I don't like how this works
-    # TODO: Should spaces be managed here or elsewhere?
-    first_entity = ex["first_actor"]
-    movie = " " + ex["movie_title"]
+def get_inputs(ex, test_sentence_template, tokenizer):
+    # TODO: fix this so preposition is handled correctly
     preposition = " alongside"
 
     test_sentence = test_sentence_template.format(**ex, preposition=preposition)
     inputs = tokenizer(test_sentence, return_tensors="pt").to(DEVICE)
-    input_ids = inputs["input_ids"]
+    return inputs
+
+
+def get_patches(ex, patch_config, n_layers, tokenizer, input_ids):
+    layers_dict = get_layers_dict(n_layers)
 
     patches = {}
     # Fill all patches with "other" if present
@@ -169,15 +168,16 @@ def get_patches(ex, patch_config, n_layers, test_sentence_template, tokenizer):
                 targets=targets,
                 patch_layers=patch_layers,
             )
-    return patches, inputs
+    return patches
+    # return patches, inputs
 
 
 def run_patched_inference(
+    inputs,
+    patches,
     llm_recipient_base,
     llm_donor_base,
     model_config,
-    inputs,
-    patches,
     patch_dropout=0.0,
     dropout_strategy="layer",  # choices: layer, matrix
 ):
@@ -208,7 +208,6 @@ def run_patched_inference(
                         else True
                     )
                     if PATCH_FLAG and asdict(p.targets).get(logical_name, False):
-                        # LOGGER.info(f"Patching {logical_name} for layer {layer_idx}")
                         patch_component(
                             llm_recipient,
                             llm_donor,
@@ -232,73 +231,6 @@ def run_patched_inference(
     return probs, dropout
 
 
-def run_patching_experiment(
-    ex,
-    patches,
-    model_config,
-    tokenizer,
-    inputs,
-    llm_recipient_base,
-    llm_donor_base,
-    patching=True,
-    target_key="second_actor",
-    patch_dropout=0.0,
-    dropout_strategy="layer",  # choices: layer, matrix
-    top_k=20,
-):
-    target_name = ex[target_key]
-    target_token_idx = tokenizer.encode(" " + target_name, add_special_tokens=False)[0]
-    target_token = tokenizer.decode(target_token_idx)
-
-    ex_id = ex["id"]
-
-    # TODO: Figure out where to pass the configs for patched inference, etc.
-    if patching:
-        probs, dropout = run_patched_inference(
-            llm_recipient_base,
-            llm_donor_base,
-            model_config,
-            inputs,
-            patches,
-            patch_dropout,
-            dropout_strategy,
-        )
-    else:
-        dropout = {
-            "layers": [],
-        }
-        probs = torch.softmax(
-            llm_recipient_base(inputs["input_ids"]).logits[0, -1], dim=-1
-        )
-
-    topk_probs, topk_indices = torch.topk(probs, top_k)
-    target_token_prob = probs[target_token_idx].item()
-
-    top_predictions = []
-    for prob, idx in zip(topk_probs.tolist(), topk_indices.tolist()):
-        token_str = tokenizer.decode([idx])
-        top_predictions.append(
-            {
-                "token_id": idx,
-                "token": token_str,
-                "probability": prob,
-            }
-        )
-
-    results = {
-        "ex_id": ex_id,
-        "dropout": dropout,
-        "top_predictions": top_predictions,
-        "target": {
-            "token": target_token,
-            "token_idx": target_token_idx,
-            "token_prob": target_token_prob,
-        },
-    }
-
-    return results
-
-
 def main(experiment_config, patch_config):
     SMOKE_TEST = experiment_config["smoke_test"]
     model_name = experiment_config["model"]["pretrained"]
@@ -308,9 +240,9 @@ def main(experiment_config, patch_config):
     # Set up dirs
     metadata_path = experiment_config["paths"]["metadata"]
     timestamp_dir = timestamp + "_smoke_test" if SMOKE_TEST else timestamp
-    if experiment_config["experiment_settings"]["patching"]:
+    if experiment_config["inference_settings"]["patching"]:
         hyperparams_dir = "dropout_" + str(
-            experiment_config["experiment_settings"]["patch_dropout"]
+            experiment_config["inference_settings"]["patch_dropout"]
         )
     else:
         hyperparams_dir = "no_patching"
@@ -326,12 +258,12 @@ def main(experiment_config, patch_config):
     llm_pretrained = AutoModelForCausalLM.from_pretrained(pretrained).to(DEVICE)
     llm_finetuned = AutoModelForCausalLM.from_pretrained(finetuned_path).to(DEVICE)
 
-    if experiment_config["model"]["donor_model"] == "finetuned":
-        llm_donor_base = llm_finetuned
-        llm_recipient_base = llm_pretrained
-    else:
-        llm_donor_base = llm_pretrained
+    if experiment_config["model"]["recipient_model"] == "finetuned":
         llm_recipient_base = llm_finetuned
+        llm_donor_base = llm_pretrained
+    else:
+        llm_recipient_base = llm_pretrained
+        llm_donor_base = llm_finetuned
 
     with open(metadata_path, "r") as f:
         metadata = [json.loads(line) for line in f]
@@ -340,37 +272,84 @@ def main(experiment_config, patch_config):
     model_config = MODEL_CONFIGS[model_name]
     n_layers = len(get_attr(llm_pretrained, model_config["layers"]))
 
-    experiment_settings = experiment_config["experiment_settings"]
+    inference_settings = experiment_config["inference_settings"]
 
     test_sentence_template = experiment_config["templates"]["test_sentence_template"]
 
-    results = []
     limit = 5 if SMOKE_TEST else None
+    results = []
     for ex in tqdm(metadata[:limit]):
-        patches, inputs = get_patches(
-            ex, patch_config, n_layers, test_sentence_template, tokenizer
-        )
-        results.append(
-            run_patching_experiment(
-                ex,
-                patches,
-                model_config,
-                tokenizer,
-                inputs,
-                llm_recipient_base=llm_recipient_base,
-                llm_donor_base=llm_donor_base,
-                **experiment_settings,
-            )
+        inputs = get_inputs(
+            ex,
+            test_sentence_template,
+            tokenizer,
         )
 
-    results_final = {
-        "experiment_settings": experiment_settings,
+        if inference_settings["patching"]:
+            patches = get_patches(
+                ex,
+                patch_config,
+                n_layers,
+                tokenizer,
+                inputs["input_ids"],
+            )
+            probs, dropout_record = run_patched_inference(
+                inputs,
+                patches,
+                llm_recipient_base,
+                llm_donor_base,
+                model_config,
+                **inference_settings,
+            )
+        else:
+            dropout_record = {
+                "layers": [],
+            }
+            probs = torch.softmax(
+                llm_recipient_base(inputs["input_ids"]).logits[0, -1], dim=-1
+            )
+
+        target_name = ex[inference_settings["target_key"]]
+        target_token_idx = tokenizer.encode(
+            " " + target_name, add_special_tokens=False
+        )[0]
+        target_token = tokenizer.decode(target_token_idx)
+
+        topk_probs, topk_indices = torch.topk(probs, inference_settings["top_k"])
+        target_token_prob = probs[target_token_idx].item()
+
+        top_predictions = []
+        for prob, idx in zip(topk_probs.tolist(), topk_indices.tolist()):
+            token_str = tokenizer.decode([idx])
+            top_predictions.append(
+                {
+                    "token_id": idx,
+                    "token": token_str,
+                    "probability": prob,
+                }
+            )
+
+        results.append(
+            {
+                "ex_id": ex["id"],
+                "dropout_record": dropout_record,
+                "top_predictions": top_predictions,
+                "target": {
+                    "token": target_token,
+                    "token_idx": target_token_idx,
+                    "token_prob": target_token_prob,
+                },
+            }
+        )
+
+    results_with_settings = {
+        "inference_settings": inference_settings,
         "patch_config": patch_config,
         "results": results,
     }
 
     with open(output_dir / "results.json", "w") as f:
-        json.dump(results_final, f, indent=2)
+        json.dump(results_with_settings, f, indent=2)
 
 
 if __name__ == "__main__":
