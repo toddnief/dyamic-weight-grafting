@@ -1,0 +1,153 @@
+import argparse
+import json
+from pathlib import Path
+from statistics import mean, variance
+from typing import Any, Dict, List
+
+import matplotlib.pyplot as plt
+
+
+def load_experiment_results(
+    results_dir: Path, top_k: int = 20
+) -> tuple[List[Dict[str, Any]], Dict[float, List[Dict[str, Any]]]]:
+    results_paths = results_dir.rglob("*.json")
+
+    poor_performance_examples = {}
+    results = []
+
+    for results_path in results_paths:
+        with open(results_path, "r") as f:
+            data = json.load(f)
+
+        dropout_rate = data["inference_settings"].get("patch_dropout", 0.0)
+
+        target_probs = [
+            ex["target"]["token_prob"]
+            for ex in data["results"]
+            if "target" in ex and "token_prob" in ex["target"]
+        ]
+
+        accuracy = [
+            int(ex["target"]["token_idx"] == ex["top_predictions"][0]["token_id"])
+            for ex in data["results"]
+        ]
+
+        avg_prob = mean(target_probs)
+        avg_accuracy = mean(accuracy)
+        var_prob = variance(target_probs)
+
+        results.append(
+            {
+                "dropout_rate": dropout_rate,
+                "avg_prob": avg_prob,
+                "var_prob": var_prob,
+                "avg_accuracy": avg_accuracy,
+            }
+        )
+
+        lowest_k = sorted(data["results"], key=lambda ex: ex["target"]["token_prob"])[
+            :top_k
+        ]
+        poor_performance_examples[dropout_rate] = lowest_k
+
+    return results, poor_performance_examples
+
+
+def plot_results(results: List[Dict[str, Any]], figures_dir: Path) -> None:
+    """
+    Generate and save plots from the experiment results.
+    """
+    # TODO: maybe pull the experiment name from the parent directory
+    experiment_name = figures_dir.parent.parent.name
+
+    # Sort results by dropout rate
+    results.sort(key=lambda x: x["dropout_rate"])
+
+    # Extract data for plotting
+    dropout_rates = [r["dropout_rate"] for r in results]
+    avg_probs = [r["avg_prob"] for r in results]
+    var_probs = [r["var_prob"] for r in results]
+    accuracies = [r["avg_accuracy"] for r in results]
+
+    # Plot 1: Avg Probability with error bars
+    plt.figure(figsize=(8, 6))
+    plt.errorbar(dropout_rates, avg_probs, yerr=var_probs, fmt="o-", capsize=5)
+    plt.xlabel("Dropout Rate")
+    plt.ylabel("Average Target Token Probability")
+    plt.title(experiment_name)
+    plt.ylim(-0.3, 1.3)
+    plt.grid(True)
+    plt.savefig(figures_dir / "dropout_vs_prob.png", dpi=300, bbox_inches="tight")
+    plt.close()
+
+    # Plot 2: Accuracy
+    plt.figure(figsize=(8, 6))
+    plt.errorbar(dropout_rates, accuracies, fmt="o-", capsize=5)
+    plt.xlabel("Dropout Rate")
+    plt.ylabel("Average Accuracy")
+    plt.title(experiment_name)
+    plt.ylim(-0.3, 1.3)
+    plt.grid(True)
+    plt.savefig(figures_dir / "dropout_vs_accuracy.png", dpi=300, bbox_inches="tight")
+    plt.close()
+
+
+def analyze_performance(
+    poor_performance_examples: Dict[float, List[Dict[str, Any]]], figures_dir: Path
+) -> None:
+    # Create a summary of examples with poor performance
+    summary = {}
+    for dropout_rate, examples in poor_performance_examples.items():
+        example_counts = {}
+        for example in examples:
+            example_counts[example["target"]["token"]] = (
+                example_counts.get(example["target"]["token"], 0) + 1
+            )
+        summary[dropout_rate] = example_counts
+
+    # Save summary to file
+    with open(figures_dir / "performance_summary.json", "w") as f:
+        json.dump(summary, f, indent=2)
+
+
+def main(results_dir: str) -> None:
+    """
+    Main function to orchestrate the experiment analysis.
+    """
+
+    results_dir = Path(results_dir)
+    figures_dir = results_dir / "figures"
+    figures_dir.mkdir(exist_ok=True)
+
+    # Load and process results
+    results, poor_performance_examples = load_experiment_results(results_dir)
+
+    # Generate visualizations
+    plot_results(results, figures_dir)
+    analyze_performance(poor_performance_examples, figures_dir)
+
+    print(f"Analysis complete. Results saved in {figures_dir}")
+
+
+if __name__ == "__main__":
+    # Parse a config file with analysis settings
+    parser = argparse.ArgumentParser(description="Analyze experiment results")
+    parser.add_argument(
+        "--results-dir",
+        type=str,
+        required=True,
+        help="Path to the results directory",
+    )
+    # parser.add_argument(
+    #     "--top-k",
+    #     type=int,
+    #     default=20,
+    #     help="Number of lowest probability tokens to track",
+    # )
+    args = parser.parse_args()
+
+    # # Load the config file
+    # with open(args.config_file, "r") as f:
+    #     config = json.load(f)
+
+    main(results_dir=args.results_dir)
