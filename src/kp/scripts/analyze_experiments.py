@@ -58,7 +58,8 @@ def plot_results(results: List[Dict[str, Any]], figures_dir: Path) -> None:
     Generate and save plots from the experiment results.
     """
     # TODO: maybe pull the experiment name from the parent directory
-    experiment_name = figures_dir.parent.parent.name
+    dataset_name = figures_dir.parent.parent.name
+    experiment_name = figures_dir.parent.name
 
     # Sort results by dropout rate
     results.sort(key=lambda x: x["dropout_rate"])
@@ -74,7 +75,7 @@ def plot_results(results: List[Dict[str, Any]], figures_dir: Path) -> None:
     plt.errorbar(dropout_rates, avg_probs, yerr=var_probs, fmt="o-", capsize=5)
     plt.xlabel("Dropout Rate")
     plt.ylabel("Average Target Token Probability")
-    plt.title(experiment_name)
+    plt.title(f"{dataset_name} - {experiment_name}")
     plt.ylim(-0.3, 1.3)
     plt.grid(True)
     plt.savefig(figures_dir / "dropout_vs_prob.png", dpi=300, bbox_inches="tight")
@@ -85,7 +86,7 @@ def plot_results(results: List[Dict[str, Any]], figures_dir: Path) -> None:
     plt.errorbar(dropout_rates, accuracies, fmt="o-", capsize=5)
     plt.xlabel("Dropout Rate")
     plt.ylabel("Average Accuracy")
-    plt.title(experiment_name)
+    plt.title(f"{dataset_name} - {experiment_name}")
     plt.ylim(-0.3, 1.3)
     plt.grid(True)
     plt.savefig(figures_dir / "dropout_vs_accuracy.png", dpi=300, bbox_inches="tight")
@@ -110,7 +111,7 @@ def analyze_performance(
         json.dump(summary, f, indent=2)
 
 
-def main(results_dir: str) -> None:
+def analyze_experiments(results_dir: str) -> None:
     """
     Main function to orchestrate the experiment analysis.
     """
@@ -138,16 +139,6 @@ if __name__ == "__main__":
         required=True,
         help="Path to the results directory",
     )
-    # parser.add_argument(
-    #     "--top-k",
-    #     type=int,
-    #     default=20,
-    #     help="Number of lowest probability tokens to track",
-    # )
     args = parser.parse_args()
 
-    # # Load the config file
-    # with open(args.config_file, "r") as f:
-    #     config = json.load(f)
-
-    main(results_dir=args.results_dir)
+    analyze_experiments(results_dir=args.results_dir)

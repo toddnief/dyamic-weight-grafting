@@ -10,6 +10,7 @@ import yaml
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from kp.scripts.analyze_experiments import analyze_experiments
 from kp.utils.constants import (
     DEVICE,
     EXPERIMENTS_CONFIG_DIR,
@@ -428,6 +429,8 @@ def main(experiment_config, patch_config):
 
     with open(output_dir / "results.json", "w") as f:
         json.dump(results_with_settings, f, indent=2)
+
+    analyze_experiments(output_dir)
 
 
 if __name__ == "__main__":
