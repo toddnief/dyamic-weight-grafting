@@ -10,7 +10,6 @@ import yaml
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from kp.scripts.analyze_experiments import analyze_experiments
 from kp.utils.constants import (
     DEVICE,
     EXPERIMENTS_CONFIG_DIR,
@@ -283,6 +282,19 @@ def run_patched_inference(
     return probs, dropout
 
 
+def get_experiment_timestamp_dir(
+    model_name,
+    patch_direction,
+    patch_description,
+    dataset_name,
+    timestamp,
+    smoke_test,
+):
+    experiment_name = f"{model_name}_{patch_direction}_{patch_description}"
+    timestamp_dir = timestamp + "_smoke_test" if smoke_test else timestamp
+    return EXPERIMENTS_DIR / dataset_name / experiment_name / timestamp_dir
+
+
 def main(experiment_config, patch_config):
     SMOKE_TEST = experiment_config["smoke_test"]
     PATCHING = experiment_config["patching"]
@@ -304,20 +316,21 @@ def main(experiment_config, patch_config):
 
     # Set up dirs
     metadata_path = experiment_config["paths"]["metadata"]
-    timestamp_dir = timestamp + "_smoke_test" if SMOKE_TEST else timestamp
+
+    timestamp_dir = get_experiment_timestamp_dir(
+        model_name,
+        patch_direction,
+        patch_description,
+        dataset_name,
+        timestamp,
+        SMOKE_TEST,
+    )
+
     if PATCHING:
         hyperparams_dir = "dropout_" + str(inference_settings["patch_dropout"])
     else:
         hyperparams_dir = "no_patching"
-
-    experiment_name = f"{model_name}_{patch_direction}_{patch_description}"
-    output_dir = (
-        EXPERIMENTS_DIR
-        / dataset_name
-        / experiment_name
-        / timestamp_dir
-        / hyperparams_dir
-    )
+    output_dir = timestamp_dir / hyperparams_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load models
@@ -430,19 +443,17 @@ def main(experiment_config, patch_config):
     with open(output_dir / "results.json", "w") as f:
         json.dump(results_with_settings, f, indent=2)
 
-    analyze_experiments(output_dir)
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--experiment_config",
+        "--experiment-config",
         type=str,
         default="config_experiments.yaml",
         help="Path to the experiment config file",
     )
     parser.add_argument(
-        "--patch_config",
+        "--patch-config",
         type=str,
         default="config_patches.yaml",
         help="Path to the patch config file",

@@ -37,11 +37,50 @@ create_datasets:
 	$(slurm_dir)create_datasets.slurm
 
 # Usage: make experiments CONFIG=config_experiments.yaml PATCH_CONFIG=config_patches.yaml
+# .PHONY: experiments
+# experiments:
+# 	${SBATCH} \
+# 	--partition=$(PARTITION) \
+# 	--output="$(output_file)" \
+# 	--error="$(err_file)" \
+# 	--export=ALL,TIMESTAMP=$(TIMESTAMP) \
+# 	$(slurm_dir)experiments.slurm
+
+# .PHONY: experiments
+# experiments: run_experiments analyze
+
+# .PHONY: run_experiments
+# run_experiments:
+# 	${SBATCH} \
+# 	--partition=$(PARTITION) \
+# 	--output="$(output_file)" \
+# 	--error="$(err_file)" \
+# 	--export=ALL,TIMESTAMP=$(TIMESTAMP) \
+# 	$(slurm_dir)run_experiments.slurm
+
+# .PHONY: analyze
+# analyze:
+# 	${SBATCH} \
+# 	--partition=$(PARTITION) \
+# 	--output="$(output_file)" \
+# 	--error="$(err_file)" \
+# 	--export=ALL,TIMESTAMP=$(TIMESTAMP) \
+# 	$(slurm_dir)analyze_experiments.slurm
+
 .PHONY: experiments
 experiments:
+	$(eval JOB_ID := $(shell ${SBATCH} --parsable \
+		--partition=$(PARTITION) \
+		--output="$(output_file)" \
+		--error="$(err_file)" \
+		--export=ALL,TIMESTAMP=$(TIMESTAMP) \
+		$(slurm_dir)run_experiments.slurm))
+	@echo "Submitted run_experiments job: $(JOB_ID)"
+
 	${SBATCH} \
+	--dependency=afterok:$(JOB_ID) \
 	--partition=$(PARTITION) \
 	--output="$(output_file)" \
 	--error="$(err_file)" \
 	--export=ALL,TIMESTAMP=$(TIMESTAMP) \
-	$(slurm_dir)experiments.slurm
+	$(slurm_dir)analyze_experiments.slurm

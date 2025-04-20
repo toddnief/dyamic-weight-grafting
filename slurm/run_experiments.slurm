@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --constraint="a100|h100"
 #SBATCH --time=01:00:00
-#SBATCH --array=0-10
+#SBATCH --array=0-2
 
 # Set default timestamp if not provided
 TIMESTAMP=${TIMESTAMP:-$(date +"%Y%m%d_%H%M%S")}
@@ -20,6 +20,6 @@ DROPOUT=${DROPOUT_RATES[$SLURM_ARRAY_TASK_ID]}
 
 python src/kp/scripts/run_experiments.py \
   --timestamp $TIMESTAMP \
-  --experiment_config $CONFIG_FILE \
-  --patch_config $PATCH_CONFIG_FILE \
+  --experiment-config $CONFIG_FILE \
+  --patch-config $PATCH_CONFIG_FILE \
   --override inference_settings.patch_dropout=$DROPOUT

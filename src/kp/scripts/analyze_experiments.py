@@ -5,6 +5,15 @@ from statistics import mean, variance
 from typing import Any, Dict, List
 
 import matplotlib.pyplot as plt
+import yaml
+
+from kp.scripts.run_experiments import get_experiment_timestamp_dir
+from kp.utils.constants import (
+    EXPERIMENTS_CONFIG_DIR,
+    LOGGER,
+    PATCH_CONFIG_DIR,
+    TIMESTAMP,
+)
 
 
 def load_experiment_results(
@@ -111,12 +120,34 @@ def analyze_performance(
         json.dump(summary, f, indent=2)
 
 
-def analyze_experiments(results_dir: str) -> None:
+def analyze_experiments(experiment_config, patch_config) -> None:
     """
     Main function to orchestrate the experiment analysis.
     """
+    SMOKE_TEST = experiment_config["smoke_test"]
+    PATCHING = experiment_config["patching"]
 
-    results_dir = Path(results_dir)
+    model_name = experiment_config["model"]["pretrained"]
+    dataset_name = experiment_config["dataset_name"]
+    patch_direction = experiment_config["model"]["patch_direction"]
+    patch_config_filename = experiment_config["patch_config_filename"]
+    patch_description = patch_config_filename.split(".")[0]
+    patch_description = (
+        patch_description.split("config_patches_")[1]
+        if "config_patches_" in patch_description
+        else patch_description
+    )
+    timestamp = experiment_config["timestamp"]
+
+    results_dir = get_experiment_timestamp_dir(
+        model_name,
+        patch_direction,
+        patch_description,
+        dataset_name,
+        timestamp,
+        SMOKE_TEST,
+    )
+
     figures_dir = results_dir / "figures"
     figures_dir.mkdir(exist_ok=True)
 
@@ -127,18 +158,43 @@ def analyze_experiments(results_dir: str) -> None:
     plot_results(results, figures_dir)
     analyze_performance(poor_performance_examples, figures_dir)
 
-    print(f"Analysis complete. Results saved in {figures_dir}")
+    LOGGER.info(f"Analysis complete. Results saved in {figures_dir}")
 
 
 if __name__ == "__main__":
     # Parse a config file with analysis settings
     parser = argparse.ArgumentParser(description="Analyze experiment results")
     parser.add_argument(
-        "--results-dir",
+        "--timestamp",
         type=str,
-        required=True,
-        help="Path to the results directory",
+        default=TIMESTAMP,
+        help="Timestamp of the experiment",
+    )
+    parser.add_argument(
+        "--experiment-config",
+        type=str,
+        default="config_experiments.yaml",
+        help="Path to the experiment config file",
+    )
+    parser.add_argument(
+        "--patch-config",
+        type=str,
+        default="config_patches.yaml",
+        help="Path to the patch config file",
     )
     args = parser.parse_args()
 
-    analyze_experiments(results_dir=args.results_dir)
+    experiment_config_path = EXPERIMENTS_CONFIG_DIR / args.experiment_config
+    patch_config_path = PATCH_CONFIG_DIR / args.patch_config
+
+    with open(experiment_config_path, "r") as f:
+        experiment_config = yaml.safe_load(f)
+    with open(patch_config_path, "r") as f:
+        patch_config = yaml.safe_load(f)
+
+    # Set timestamp passed from command line so experiments scheduled with slurm all have the same timestamp
+    experiment_config["timestamp"] = args.timestamp
+    # Split the filename from the path
+    experiment_config["patch_config_filename"] = args.patch_config.split("/")[-1]
+
+    analyze_experiments(experiment_config, patch_config)
