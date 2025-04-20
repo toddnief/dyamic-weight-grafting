@@ -298,7 +298,7 @@ def main(experiment_config, patch_config):
     timestamp = experiment_config["timestamp"]
 
     inference_settings = experiment_config["inference_settings"]
-    reporting_settings = experiment_config["reporting_settings"]
+    analysis_settings = experiment_config["analysis_settings"]
 
     # Set up dirs
     metadata_path = experiment_config["paths"]["metadata"]
@@ -382,13 +382,13 @@ def main(experiment_config, patch_config):
                 llm_recipient_base(inputs["input_ids"]).logits[0, -1], dim=-1
             )
 
-        target_name = ex[reporting_settings["target_key"]]
+        target_name = ex[analysis_settings["target_key"]]
         target_token_idx = tokenizer.encode(
             " " + target_name, add_special_tokens=False
         )[0]
         target_token = tokenizer.decode(target_token_idx)
 
-        topk_probs, topk_indices = torch.topk(probs, reporting_settings["top_k"])
+        topk_probs, topk_indices = torch.topk(probs, analysis_settings["top_k"])
         target_token_prob = probs[target_token_idx].item()
 
         top_predictions = []

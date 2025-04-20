@@ -22,4 +22,4 @@ python src/kp/scripts/run_experiments.py \
   --timestamp $TIMESTAMP \
   --experiment_config $CONFIG_FILE \
   --patch_config $PATCH_CONFIG_FILE \
-  --override experiment_settings.patch_dropout=$DROPOUT
+  --override inference_settings.patch_dropout=$DROPOUT
