@@ -285,6 +285,7 @@ def run_patched_inference(
 def main(experiment_config, patch_config):
     SMOKE_TEST = experiment_config["smoke_test"]
     PATCHING = experiment_config["patching"]
+
     model_name = experiment_config["model"]["pretrained"]
     dataset_name = experiment_config["dataset_name"]
     patch_direction = experiment_config["model"]["patch_direction"]
@@ -308,10 +309,14 @@ def main(experiment_config, patch_config):
     else:
         hyperparams_dir = "no_patching"
 
-    EXPERIMENT_NAME = (
-        f"{dataset_name}_{model_name}_{patch_direction}_{patch_description}"
+    experiment_name = f"{model_name}_{patch_direction}_{patch_description}"
+    output_dir = (
+        EXPERIMENTS_DIR
+        / dataset_name
+        / experiment_name
+        / timestamp_dir
+        / hyperparams_dir
     )
-    output_dir = EXPERIMENTS_DIR / EXPERIMENT_NAME / timestamp_dir / hyperparams_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load models
