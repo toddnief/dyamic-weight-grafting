@@ -149,7 +149,7 @@ def analyze_experiments(experiment_config, patch_config) -> None:
     )
 
     figures_dir = results_dir / "figures"
-    figures_dir.mkdir(exist_ok=True)
+    figures_dir.mkdir(exist_ok=True, parents=True)
 
     # Load and process results
     results, poor_performance_examples = load_experiment_results(results_dir)

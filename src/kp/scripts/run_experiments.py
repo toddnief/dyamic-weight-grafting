@@ -440,6 +440,7 @@ def main(experiment_config, patch_config):
         "results": results,
     }
 
+    LOGGER.info(f"Saving results to {output_dir / 'results.json'}")
     with open(output_dir / "results.json", "w") as f:
         json.dump(results_with_settings, f, indent=2)
 
