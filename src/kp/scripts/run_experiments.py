@@ -19,6 +19,7 @@ from kp.utils.constants import (
     PATCH_CONFIG_DIR,
     TIMESTAMP,
 )
+from kp.utils.utils_io import dict_to_namespace, namespace_to_dict
 
 MODEL_CONFIGS = {
     "gemma": {
@@ -169,37 +170,38 @@ def get_inputs(ex, test_sentence_template, tokenizer):
 
 def get_patches(ex, patch_config, n_layers, tokenizer, input_ids):
     layers_dict = get_layers_dict(n_layers)
-
     patches = {}
-    # Fill all patches with "other" if present
-    if "other" in patch_config["patches"]:
-        patch_spec = patch_config["patches"]["other"]
-        patch_layers = parse_layers(patch_spec.get("layers"), layers_dict)
+
+    # Fill all tokens with "other" patch spec if defined
+    if hasattr(patch_config.patches, "other"):
+        patch_spec = patch_config.patches.other
+        patch_layers = parse_layers(getattr(patch_spec, "layers", None), layers_dict)
 
         for token_idx in range(len(input_ids[0])):
             patches[token_idx] = Patch(
                 token_idx,
                 indeces=(0, len(input_ids[0])),
-                targets=PatchTargets(**patch_spec["targets"]),
+                targets=PatchTargets(**vars(patch_spec.targets)),
                 patch_layers=patch_layers,
             )
 
-    # Replace other specified patches
-    for key, patch_spec in patch_config["patches"].items():
+    # Handle span-based patches
+    for key, patch_spec in patch_config.patches.__dict__.items():
         if key == "other":
             continue
-        # TODO: I hate this and need to refactor to handle the preoposition, etc.
-        # Get the span text either from the example or directly
-        if "value" in patch_spec:
-            span = patch_spec["value"]
+
+        # Get span from value or constructed from example
+        if hasattr(patch_spec, "value"):
+            span = patch_spec.value
         else:
-            span = patch_spec.get("prefix", "") + ex[patch_spec["key"]]
+            prefix = getattr(patch_spec, "prefix", "")
+            span = prefix + ex[getattr(patch_spec, "key")]
 
         tokens = tokenizer.encode(span, add_special_tokens=False, return_tensors="pt")
         start_idx, end_idx = find_sublist_index(input_ids, tokens)
 
-        targets = PatchTargets(**patch_spec["targets"])
-        patch_layers = parse_layers(patch_spec.get("layers"), layers_dict)
+        targets = PatchTargets(**vars(patch_spec.targets))
+        patch_layers = parse_layers(getattr(patch_spec, "layers", None), layers_dict)
 
         for token_idx in range(start_idx, end_idx):
             patches[token_idx] = Patch(
@@ -208,8 +210,8 @@ def get_patches(ex, patch_config, n_layers, tokenizer, input_ids):
                 targets=targets,
                 patch_layers=patch_layers,
             )
+
     return patches
-    # return patches, inputs
 
 
 def run_patched_inference(
@@ -256,8 +258,6 @@ def run_patched_inference(
                             layer_idx,
                             physical_name,
                         )
-        else:
-            pass
 
         # Get the patched output
         with torch.no_grad():
@@ -295,28 +295,26 @@ def get_experiment_timestamp_dir(
     return EXPERIMENTS_DIR / dataset_name / experiment_name / timestamp_dir
 
 
-def main(experiment_config, patch_config):
-    SMOKE_TEST = experiment_config["smoke_test"]
-    PATCHING = experiment_config["patching"]
+def main(cfg):
+    # Unpack reused values
+    SMOKE_TEST = cfg.smoke_test
+    PATCHING_FLAG = cfg.patching
+    model_name = cfg.model.pretrained
+    patch_direction = cfg.model.patch_direction
+    dataset_name = cfg.dataset_name
+    timestamp = cfg.timestamp
+    patch_config = cfg.patch_config
+    inference_config = cfg.inference_config
+    analysis_config = cfg.analysis_config
 
-    model_name = experiment_config["model"]["pretrained"]
-    dataset_name = experiment_config["dataset_name"]
-    patch_direction = experiment_config["model"]["patch_direction"]
-    patch_config_filename = experiment_config["patch_config_filename"]
+    # Derive patch description from filename
+    patch_config_filename = cfg.patch_config_filename
     patch_description = patch_config_filename.split(".")[0]
-    patch_description = (
-        patch_description.split("config_patches_")[1]
-        if "config_patches_" in patch_description
-        else patch_description
-    )
-    timestamp = experiment_config["timestamp"]
+    if "config_patches_" in patch_description:
+        patch_description = patch_description.split("config_patches_")[1]
 
-    inference_settings = experiment_config["inference_settings"]
-    analysis_settings = experiment_config["analysis_settings"]
-
-    # Set up dirs
-    metadata_path = experiment_config["paths"]["metadata"]
-
+    # Set up directories
+    metadata_path = cfg.paths.metadata
     timestamp_dir = get_experiment_timestamp_dir(
         model_name,
         patch_direction,
@@ -325,9 +323,8 @@ def main(experiment_config, patch_config):
         timestamp,
         SMOKE_TEST,
     )
-
-    if PATCHING:
-        hyperparams_dir = "dropout_" + str(inference_settings["patch_dropout"])
+    if PATCHING_FLAG:
+        hyperparams_dir = f"dropout_{inference_config.patch_dropout}"
     else:
         hyperparams_dir = "no_patching"
     output_dir = timestamp_dir / hyperparams_dir
@@ -335,8 +332,8 @@ def main(experiment_config, patch_config):
 
     # Load models
     pretrained = MODEL_TO_HFID[model_name]
-    both_directions_path = experiment_config["paths"]["both_directions"]
-    one_direction_path = experiment_config["paths"]["one_direction"]
+    both_directions_path = cfg.paths.both_directions
+    one_direction_path = cfg.paths.one_direction
 
     tokenizer = AutoTokenizer.from_pretrained(pretrained)
 
@@ -345,7 +342,6 @@ def main(experiment_config, patch_config):
             DEVICE
         )
         llm_recipient_base = AutoModelForCausalLM.from_pretrained(pretrained).to(DEVICE)
-
     elif patch_direction == "pre2sft":
         llm_donor_base = AutoModelForCausalLM.from_pretrained(pretrained).to(DEVICE)
         llm_recipient_base = AutoModelForCausalLM.from_pretrained(
@@ -362,28 +358,19 @@ def main(experiment_config, patch_config):
     with open(metadata_path, "r") as f:
         metadata = [json.loads(line) for line in f]
 
-    # Load experiment config
     model_config = MODEL_CONFIGS[model_name]
     n_layers = len(get_attr(llm_recipient_base, model_config["layers"]))
 
-    test_sentence_template = experiment_config["templates"]["test_sentence_template"]
-
+    test_sentence_template = cfg.templates.test_sentence_template
     limit = 5 if SMOKE_TEST else None
+
     results = []
     for ex in tqdm(metadata[:limit]):
-        inputs = get_inputs(
-            ex,
-            test_sentence_template,
-            tokenizer,
-        )
+        inputs = get_inputs(ex, test_sentence_template, tokenizer)
 
-        if PATCHING:
+        if PATCHING_FLAG:
             patches = get_patches(
-                ex,
-                patch_config,
-                n_layers,
-                tokenizer,
-                inputs["input_ids"],
+                ex, patch_config, n_layers, tokenizer, inputs["input_ids"]
             )
             probs, dropout_record = run_patched_inference(
                 inputs,
@@ -391,35 +378,31 @@ def main(experiment_config, patch_config):
                 llm_recipient_base,
                 llm_donor_base,
                 model_config,
-                **inference_settings,
+                **vars(inference_config),
             )
         else:
-            dropout_record = {
-                "layers": [],
-            }
+            dropout_record = {"layers": []}
             probs = torch.softmax(
                 llm_recipient_base(inputs["input_ids"]).logits[0, -1], dim=-1
             )
 
-        target_name = ex[analysis_settings["target_key"]]
+        target_name = ex[analysis_config.target_key]
         target_token_idx = tokenizer.encode(
             " " + target_name, add_special_tokens=False
         )[0]
         target_token = tokenizer.decode(target_token_idx)
 
-        topk_probs, topk_indices = torch.topk(probs, analysis_settings["top_k"])
+        topk_probs, topk_indices = torch.topk(probs, analysis_config.top_k)
         target_token_prob = probs[target_token_idx].item()
 
-        top_predictions = []
-        for prob, idx in zip(topk_probs.tolist(), topk_indices.tolist()):
-            token_str = tokenizer.decode([idx])
-            top_predictions.append(
-                {
-                    "token_id": idx,
-                    "token": token_str,
-                    "probability": prob,
-                }
-            )
+        top_predictions = [
+            {
+                "token_id": idx,
+                "token": tokenizer.decode([idx]),
+                "probability": prob,
+            }
+            for prob, idx in zip(topk_probs.tolist(), topk_indices.tolist())
+        ]
 
         results.append(
             {
@@ -434,15 +417,15 @@ def main(experiment_config, patch_config):
             }
         )
 
-    results_with_settings = {
-        "inference_settings": inference_settings,
-        "patch_config": patch_config,
+    results_with_configs = {
+        "inference_config": namespace_to_dict(inference_config),
+        "patch_config": namespace_to_dict(patch_config),
         "results": results,
     }
 
     LOGGER.info(f"Saving results to {output_dir / 'results.json'}")
     with open(output_dir / "results.json", "w") as f:
-        json.dump(results_with_settings, f, indent=2)
+        json.dump(results_with_configs, f, indent=2)
 
 
 if __name__ == "__main__":
@@ -456,7 +439,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--patch-config",
         type=str,
-        default="config_patches.yaml",
+        default="all_tokens_attn_ffn_all.yaml",
         help="Path to the patch config file",
     )
     parser.add_argument(
@@ -500,4 +483,8 @@ if __name__ == "__main__":
         key, val = item.split("=", 1)
         set_nested(experiment_config, key, yaml.safe_load(val))
 
-    main(experiment_config, patch_config)
+    # Convert to namespace
+    experiment_config["patch_config"] = patch_config
+    cfg = dict_to_namespace(experiment_config)
+
+    main(cfg)
