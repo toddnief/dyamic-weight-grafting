@@ -12,7 +12,7 @@ TIMESTAMP=${TIMESTAMP:-$(date +"%Y%m%d_%H%M%S")}
 
 # Note: This enables passing the config file as an argument to the script from the Makefile
 CONFIG_FILE=${CONFIG:-config_experiments.yaml}
-PATCH_CONFIG_FILE=${PATCH_CONFIG:-config_patches.yaml}
+PATCH_CONFIG_FILE=${PATCH_CONFIG:-all_tokens_attn_ffn_all.yaml}
 
 # Setup dropout experiment param sweep
 DROPOUT_RATES=(0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0)
@@ -22,4 +22,4 @@ python src/kp/scripts/run_experiments.py \
   --timestamp $TIMESTAMP \
   --experiment-config $CONFIG_FILE \
   --patch-config $PATCH_CONFIG_FILE \
-  --override inference_settings.patch_dropout=$DROPOUT
+  --override "inference_config.patch_dropout=$DROPOUT"

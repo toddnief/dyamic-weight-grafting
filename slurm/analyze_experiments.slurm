@@ -9,7 +9,7 @@ TIMESTAMP=${TIMESTAMP:-$(date +"%Y%m%d_%H%M%S")}
 
 # Note: This enables passing the config file as an argument to the script from the Makefile
 CONFIG_FILE=${CONFIG:-config_experiments.yaml}
-PATCH_CONFIG_FILE=${PATCH_CONFIG:-config_patches.yaml}
+PATCH_CONFIG_FILE=${PATCH_CONFIG:-all_tokens_attn_ffn_all.yaml}
 
 python src/kp/scripts/analyze_experiments.py \
   --timestamp $TIMESTAMP \

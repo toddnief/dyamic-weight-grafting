@@ -6,7 +6,6 @@ from dataclasses import asdict, dataclass, field
 from typing import List, Tuple
 
 import torch
-import yaml
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -19,7 +18,7 @@ from kp.utils.constants import (
     PATCH_CONFIG_DIR,
     TIMESTAMP,
 )
-from kp.utils.utils_io import dict_to_namespace, namespace_to_dict
+from kp.utils.utils_io import load_config, namespace_to_dict
 
 MODEL_CONFIGS = {
     "gemma": {
@@ -297,8 +296,8 @@ def get_experiment_timestamp_dir(
 
 def main(cfg):
     # Unpack reused values
-    SMOKE_TEST = cfg.smoke_test
-    PATCHING_FLAG = cfg.patching
+    smoke_test = cfg.smoke_test
+    patching_flag = cfg.patching
     model_name = cfg.model.pretrained
     patch_direction = cfg.model.patch_direction
     dataset_name = cfg.dataset_name
@@ -321,9 +320,9 @@ def main(cfg):
         patch_description,
         dataset_name,
         timestamp,
-        SMOKE_TEST,
+        smoke_test,
     )
-    if PATCHING_FLAG:
+    if patching_flag:
         hyperparams_dir = f"dropout_{inference_config.patch_dropout}"
     else:
         hyperparams_dir = "no_patching"
@@ -362,13 +361,13 @@ def main(cfg):
     n_layers = len(get_attr(llm_recipient_base, model_config["layers"]))
 
     test_sentence_template = cfg.templates.test_sentence_template
-    limit = 5 if SMOKE_TEST else None
+    limit = 5 if smoke_test else None
 
     results = []
     for ex in tqdm(metadata[:limit]):
         inputs = get_inputs(ex, test_sentence_template, tokenizer)
 
-        if PATCHING_FLAG:
+        if patching_flag:
             patches = get_patches(
                 ex, patch_config, n_layers, tokenizer, inputs["input_ids"]
             )
@@ -461,30 +460,12 @@ if __name__ == "__main__":
     LOGGER.info(f"Running experiments with experiment config: {experiment_config_path}")
     LOGGER.info(f"Running experiments with patch config: {patch_config_path}")
 
-    with open(experiment_config_path, "r") as f:
-        experiment_config = yaml.safe_load(f)
-    with open(patch_config_path, "r") as f:
-        patch_config = yaml.safe_load(f)
-
-    # Set timestamp passed from command line so experiments scheduled with slurm all have the same timestamp
-    experiment_config["timestamp"] = args.timestamp
-
-    # Split the filename from the path
-    experiment_config["patch_config_filename"] = args.patch_config.split("/")[-1]
-
-    def set_nested(config, key_path, value):
-        keys = key_path.split(".")
-        for key in keys[:-1]:
-            config = config.setdefault(key, {})
-        config[keys[-1]] = value
-
-    # Usage: --override experiment_config.patch_dropout=0.1
-    for item in args.override:
-        key, val = item.split("=", 1)
-        set_nested(experiment_config, key, yaml.safe_load(val))
-
-    # Convert to namespace
-    experiment_config["patch_config"] = patch_config
-    cfg = dict_to_namespace(experiment_config)
+    cfg = load_config(
+        experiment_config_path,
+        patch_config_path,
+        timestamp=args.timestamp,
+        patch_filename=args.patch_config.split("/")[-1],
+        overrides=args.override,
+    )
 
     main(cfg)

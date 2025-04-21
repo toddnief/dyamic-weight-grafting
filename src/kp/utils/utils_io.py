@@ -1,6 +1,10 @@
 import json
 from types import SimpleNamespace
 
+import yaml
+
+from kp.utils.constants import LOGGER
+
 
 def dict_to_namespace(d):
     if isinstance(d, dict):
@@ -20,6 +24,37 @@ def namespace_to_dict(ns):
         return {k: namespace_to_dict(v) for k, v in ns.items()}
     else:
         return ns
+
+
+def set_nested(config, key_path, value):
+    keys = key_path.split(".")
+    for key in keys[:-1]:
+        config = config.setdefault(key, {})
+    config[keys[-1]] = value
+
+
+def load_config(
+    experiment_config_path,
+    patch_config_path,
+    timestamp=None,
+    patch_filename=None,
+    overrides=None,
+):
+    with open(experiment_config_path, "r") as f:
+        experiment_config = yaml.safe_load(f)
+    with open(patch_config_path, "r") as f:
+        patch_config = yaml.safe_load(f)
+
+    experiment_config["timestamp"] = timestamp
+    experiment_config["patch_config_filename"] = patch_filename
+    experiment_config["patch_config"] = patch_config
+
+    LOGGER.info(f"Overrides: {overrides}")
+    for item in overrides or []:
+        key, val = item.split("=", 1)
+        set_nested(experiment_config, key, yaml.safe_load(val))
+
+    return dict_to_namespace(experiment_config)
 
 
 def load_jsonl(file_path):

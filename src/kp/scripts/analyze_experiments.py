@@ -5,7 +5,6 @@ from statistics import mean, variance
 from typing import Any, Dict, List
 
 import matplotlib.pyplot as plt
-import yaml
 
 from kp.scripts.run_experiments import get_experiment_timestamp_dir
 from kp.utils.constants import (
@@ -14,6 +13,7 @@ from kp.utils.constants import (
     PATCH_CONFIG_DIR,
     TIMESTAMP,
 )
+from kp.utils.utils_io import load_config
 
 
 def load_experiment_results(
@@ -28,7 +28,7 @@ def load_experiment_results(
         with open(results_path, "r") as f:
             data = json.load(f)
 
-        dropout_rate = data["inference_settings"].get("patch_dropout", 0.0)
+        dropout_rate = data["inference_config"].get("patch_dropout", 0.0)
 
         target_probs = [
             ex["target"]["token_prob"]
@@ -120,24 +120,17 @@ def analyze_performance(
         json.dump(summary, f, indent=2)
 
 
-def analyze_experiments(experiment_config, patch_config) -> None:
-    """
-    Main function to orchestrate the experiment analysis.
-    """
-    SMOKE_TEST = experiment_config["smoke_test"]
-    PATCHING = experiment_config["patching"]
+def analyze_experiments(cfg) -> None:
+    smoke_test = cfg.smoke_test
+    model_name = cfg.model.pretrained
+    dataset_name = cfg.dataset_name
+    patch_direction = cfg.model.patch_direction
+    patch_config_filename = cfg.patch_config_filename
+    timestamp = cfg.timestamp
 
-    model_name = experiment_config["model"]["pretrained"]
-    dataset_name = experiment_config["dataset_name"]
-    patch_direction = experiment_config["model"]["patch_direction"]
-    patch_config_filename = experiment_config["patch_config_filename"]
     patch_description = patch_config_filename.split(".")[0]
-    patch_description = (
-        patch_description.split("config_patches_")[1]
-        if "config_patches_" in patch_description
-        else patch_description
-    )
-    timestamp = experiment_config["timestamp"]
+    if "config_patches_" in patch_description:
+        patch_description = patch_description.split("config_patches_")[1]
 
     results_dir = get_experiment_timestamp_dir(
         model_name,
@@ -145,16 +138,13 @@ def analyze_experiments(experiment_config, patch_config) -> None:
         patch_description,
         dataset_name,
         timestamp,
-        SMOKE_TEST,
+        smoke_test,
     )
 
     figures_dir = results_dir / "figures"
     figures_dir.mkdir(exist_ok=True, parents=True)
 
-    # Load and process results
     results, poor_performance_examples = load_experiment_results(results_dir)
-
-    # Generate visualizations
     plot_results(results, figures_dir)
     analyze_performance(poor_performance_examples, figures_dir)
 
@@ -162,39 +152,87 @@ def analyze_experiments(experiment_config, patch_config) -> None:
 
 
 if __name__ == "__main__":
-    # Parse a config file with analysis settings
-    parser = argparse.ArgumentParser(description="Analyze experiment results")
-    parser.add_argument(
-        "--timestamp",
-        type=str,
-        default=TIMESTAMP,
-        help="Timestamp of the experiment",
-    )
-    parser.add_argument(
-        "--experiment-config",
-        type=str,
-        default="config_experiments.yaml",
-        help="Path to the experiment config file",
-    )
-    parser.add_argument(
-        "--patch-config",
-        type=str,
-        default="config_patches.yaml",
-        help="Path to the patch config file",
-    )
-    args = parser.parse_args()
+    # # Parse a config file with analysis settings
+    # parser = argparse.ArgumentParser(description="Analyze experiment results")
+    # parser.add_argument(
+    #     "--timestamp",
+    #     type=str,
+    #     default=TIMESTAMP,
+    #     help="Timestamp of the experiment",
+    # )
+    # parser.add_argument(
+    #     "--experiment-config",
+    #     type=str,
+    #     default="config_experiments.yaml",
+    #     help="Path to the experiment config file",
+    # )
+    # parser.add_argument(
+    #     "--patch-config",
+    #     type=str,
+    #     default="config_patches.yaml",
+    #     help="Path to the patch config file",
+    # )
+    # args = parser.parse_args()
 
-    experiment_config_path = EXPERIMENTS_CONFIG_DIR / args.experiment_config
-    patch_config_path = PATCH_CONFIG_DIR / args.patch_config
+    # experiment_config_path = EXPERIMENTS_CONFIG_DIR / args.experiment_config
+    # patch_config_path = PATCH_CONFIG_DIR / args.patch_config
 
-    with open(experiment_config_path, "r") as f:
-        experiment_config = yaml.safe_load(f)
-    with open(patch_config_path, "r") as f:
-        patch_config = yaml.safe_load(f)
+    # with open(experiment_config_path, "r") as f:
+    #     experiment_config = yaml.safe_load(f)
+    # with open(patch_config_path, "r") as f:
+    #     patch_config = yaml.safe_load(f)
 
-    # Set timestamp passed from command line so experiments scheduled with slurm all have the same timestamp
-    experiment_config["timestamp"] = args.timestamp
-    # Split the filename from the path
-    experiment_config["patch_config_filename"] = args.patch_config.split("/")[-1]
+    # # Set timestamp passed from command line so experiments scheduled with slurm all have the same timestamp
+    # experiment_config["timestamp"] = args.timestamp
+    # # Split the filename from the path
+    # experiment_config["patch_config_filename"] = args.patch_config.split("/")[-1]
 
-    analyze_experiments(experiment_config, patch_config)
+    # analyze_experiments(experiment_config, patch_config)
+    if __name__ == "__main__":
+        parser = argparse.ArgumentParser(description="Analyze experiment results")
+        parser.add_argument("--timestamp", type=str, default=TIMESTAMP)
+        parser.add_argument(
+            "--experiment-config", type=str, default="config_experiments.yaml"
+        )
+        parser.add_argument("--patch-config", type=str, default="config_patches.yaml")
+        parser.add_argument(
+            "--override",
+            nargs="*",
+            default=[],
+            help="Override config entries with KEY=VALUE pairs",
+        )
+        args = parser.parse_args()
+
+        experiment_config_path = EXPERIMENTS_CONFIG_DIR / args.experiment_config
+        patch_config_path = PATCH_CONFIG_DIR / args.patch_config
+
+        cfg = load_config(
+            experiment_config_path,
+            patch_config_path,
+            timestamp=args.timestamp,
+            patch_filename=args.patch_config.split("/")[-1],
+            overrides=args.override,
+        )
+
+        # with open(experiment_config_path, "r") as f:
+        #     experiment_config = yaml.safe_load(f)
+        # with open(patch_config_path, "r") as f:
+        #     patch_config = yaml.safe_load(f)
+
+        # experiment_config["timestamp"] = args.timestamp
+        # experiment_config["patch_config_filename"] = args.patch_config.split("/")[-1]
+
+        # def set_nested(config, key_path, value):
+        #     keys = key_path.split(".")
+        #     for key in keys[:-1]:
+        #         config = config.setdefault(key, {})
+        #     config[keys[-1]] = value
+
+        # for item in args.override:
+        #     key, val = item.split("=", 1)
+        #     set_nested(experiment_config, key, yaml.safe_load(val))
+
+        # experiment_config["patch_config"] = patch_config
+        # cfg = dict_to_namespace(experiment_config)
+
+        analyze_experiments(cfg)
