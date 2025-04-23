@@ -3,6 +3,7 @@ import copy
 import json
 import random
 from dataclasses import asdict, dataclass, field
+from pathlib import Path
 from typing import List, Tuple
 
 import torch
@@ -258,7 +259,7 @@ def run_patched_inference(
                             physical_name,
                         )
 
-        # Get the patched output
+        # Get the model output (patched or not) and save kv cache
         with torch.no_grad():
             # Try the new cache API first, fall back to past_key_values if needed
             try:
@@ -283,6 +284,8 @@ def run_patched_inference(
 
 def get_experiment_timestamp_dir(
     model_name,
+    both_directions_parent,
+    both_directions_checkpoint,
     patch_direction,
     patch_description,
     dataset_name,
@@ -290,21 +293,23 @@ def get_experiment_timestamp_dir(
     smoke_test,
 ):
     experiment_name = f"{model_name}_{patch_direction}_{patch_description}"
-    timestamp_dir = timestamp + "_smoke_test" if smoke_test else timestamp
+    checkpoint_name = (
+        f"{both_directions_parent}_{both_directions_checkpoint}_{timestamp}"
+    )
+    timestamp_dir = checkpoint_name + "_smoke_test" if smoke_test else checkpoint_name
     return EXPERIMENTS_DIR / dataset_name / experiment_name / timestamp_dir
 
 
 def main(cfg):
-    # Unpack reused values
-    smoke_test = cfg.smoke_test
-    patching_flag = cfg.patching
-    model_name = cfg.model.pretrained
-    patch_direction = cfg.model.patch_direction
-    dataset_name = cfg.dataset_name
-    timestamp = cfg.timestamp
-    patch_config = cfg.patch_config
-    inference_config = cfg.inference_config
-    analysis_config = cfg.analysis_config
+    models_dir = Path(cfg.paths.models_dir)
+    both_directions_path = (
+        models_dir
+        / cfg.paths.both_directions_parent
+        / cfg.paths.both_directions_checkpoint
+    )
+    one_direction_path = (
+        models_dir / cfg.paths.one_direction_parent / cfg.paths.one_direction_checkpoint
+    )
 
     # Derive patch description from filename
     patch_config_filename = cfg.patch_config_filename
@@ -314,39 +319,39 @@ def main(cfg):
 
     # Set up directories
     metadata_path = cfg.paths.metadata
-    timestamp_dir = get_experiment_timestamp_dir(
-        model_name,
-        patch_direction,
+    experiment_timestamp_dir = get_experiment_timestamp_dir(
+        cfg.model.pretrained,
+        cfg.paths.both_directions_parent,
+        cfg.paths.both_directions_checkpoint,
+        cfg.model.patch_direction,
         patch_description,
-        dataset_name,
-        timestamp,
-        smoke_test,
+        cfg.dataset_name,
+        cfg.timestamp,
+        cfg.smoke_test,
     )
-    if patching_flag:
-        hyperparams_dir = f"dropout_{inference_config.patch_dropout}"
+    if cfg.patching_flag:
+        hyperparams_dir = f"dropout_{cfg.inference_config.patch_dropout}"
     else:
         hyperparams_dir = "no_patching"
-    output_dir = timestamp_dir / hyperparams_dir
+    output_dir = experiment_timestamp_dir / hyperparams_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load models
-    pretrained = MODEL_TO_HFID[model_name]
-    both_directions_path = cfg.paths.both_directions
-    one_direction_path = cfg.paths.one_direction
+    pretrained = MODEL_TO_HFID[cfg.model.pretrained]
 
     tokenizer = AutoTokenizer.from_pretrained(pretrained)
 
-    if patch_direction == "sft2pre":
+    if cfg.model.patch_direction == "sft2pre":
         llm_donor_base = AutoModelForCausalLM.from_pretrained(both_directions_path).to(
             DEVICE
         )
         llm_recipient_base = AutoModelForCausalLM.from_pretrained(pretrained).to(DEVICE)
-    elif patch_direction == "pre2sft":
+    elif cfg.model.patch_direction == "pre2sft":
         llm_donor_base = AutoModelForCausalLM.from_pretrained(pretrained).to(DEVICE)
         llm_recipient_base = AutoModelForCausalLM.from_pretrained(
             both_directions_path
         ).to(DEVICE)
-    elif patch_direction == "both2one":
+    elif cfg.model.patch_direction == "both2one":
         llm_donor_base = AutoModelForCausalLM.from_pretrained(both_directions_path).to(
             DEVICE
         )
@@ -357,19 +362,19 @@ def main(cfg):
     with open(metadata_path, "r") as f:
         metadata = [json.loads(line) for line in f]
 
-    model_config = MODEL_CONFIGS[model_name]
+    model_config = MODEL_CONFIGS[cfg.model.pretrained]
     n_layers = len(get_attr(llm_recipient_base, model_config["layers"]))
 
     test_sentence_template = cfg.templates.test_sentence_template
-    limit = 5 if smoke_test else None
+    limit = 5 if cfg.smoke_test else None
 
     results = []
     for ex in tqdm(metadata[:limit]):
         inputs = get_inputs(ex, test_sentence_template, tokenizer)
 
-        if patching_flag:
+        if cfg.patching_flag:
             patches = get_patches(
-                ex, patch_config, n_layers, tokenizer, inputs["input_ids"]
+                ex, cfg.patch_config, n_layers, tokenizer, inputs["input_ids"]
             )
             probs, dropout_record = run_patched_inference(
                 inputs,
@@ -377,7 +382,7 @@ def main(cfg):
                 llm_recipient_base,
                 llm_donor_base,
                 model_config,
-                **vars(inference_config),
+                **vars(cfg.inference_config),
             )
         else:
             dropout_record = {"layers": []}
@@ -385,13 +390,13 @@ def main(cfg):
                 llm_recipient_base(inputs["input_ids"]).logits[0, -1], dim=-1
             )
 
-        target_name = ex[analysis_config.target_key]
+        target_name = ex[cfg.analysis_config.target_key]
         target_token_idx = tokenizer.encode(
             " " + target_name, add_special_tokens=False
         )[0]
         target_token = tokenizer.decode(target_token_idx)
 
-        topk_probs, topk_indices = torch.topk(probs, analysis_config.top_k)
+        topk_probs, topk_indices = torch.topk(probs, cfg.analysis_config.top_k)
         target_token_prob = probs[target_token_idx].item()
 
         top_predictions = [
@@ -417,8 +422,8 @@ def main(cfg):
         )
 
     results_with_configs = {
-        "inference_config": namespace_to_dict(inference_config),
-        "patch_config": namespace_to_dict(patch_config),
+        "inference_config": namespace_to_dict(cfg.inference_config),
+        "patch_config": namespace_to_dict(cfg.patch_config),
         "results": results,
     }
 

@@ -42,7 +42,7 @@ def train(config_path):
     model_name = model_checkpoint.split("/")[-1]
 
     model_dir_name = model_name if not SMOKE_TEST else f"{model_name}_smoke_test"
-    run_dir = RUN_NAME + TIMESTAMP
+    run_dir = RUN_NAME + "_" + TIMESTAMP
     output_dir = TRAINED_MODELS_DIR / model_dir_name / run_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
