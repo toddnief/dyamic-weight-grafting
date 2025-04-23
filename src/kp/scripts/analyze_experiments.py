@@ -161,6 +161,11 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
+    if not args.experiment_config.endswith(".yaml"):
+        args.experiment_config += ".yaml"
+    if not args.patch_config.endswith(".yaml"):
+        args.patch_config += ".yaml"
+
     experiment_config_path = EXPERIMENTS_CONFIG_DIR / args.experiment_config
     patch_config_path = PATCH_CONFIG_DIR / args.patch_config
 

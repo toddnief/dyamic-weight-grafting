@@ -302,14 +302,23 @@ def get_experiment_timestamp_dir(
 
 def main(cfg):
     models_dir = Path(cfg.paths.models_dir)
-    both_directions_path = (
-        models_dir
-        / cfg.paths.both_directions_parent
-        / cfg.paths.both_directions_checkpoint
-    )
-    one_direction_path = (
-        models_dir / cfg.paths.one_direction_parent / cfg.paths.one_direction_checkpoint
-    )
+    # Load best saved checkpoint if not specified
+    if cfg.paths.both_directions_checkpoint is not None:
+        both_directions_path = (
+            models_dir
+            / cfg.paths.both_directions_parent
+            / cfg.paths.both_directions_checkpoint
+        )
+    else:
+        both_directions_path = models_dir / cfg.paths.both_directions_parent
+    if cfg.paths.one_direction_checkpoint is not None:
+        one_direction_path = (
+            models_dir
+            / cfg.paths.one_direction_parent
+            / cfg.paths.one_direction_checkpoint
+        )
+    else:
+        one_direction_path = models_dir / cfg.paths.one_direction_parent
 
     # Derive patch description from filename
     patch_config_filename = cfg.patch_config_filename
@@ -459,6 +468,11 @@ if __name__ == "__main__":
         help="Override config entries with KEY=VALUE pairs",
     )
     args = parser.parse_args()
+
+    if not args.experiment_config.endswith(".yaml"):
+        args.experiment_config += ".yaml"
+    if not args.patch_config.endswith(".yaml"):
+        args.patch_config += ".yaml"
 
     experiment_config_path = EXPERIMENTS_CONFIG_DIR / args.experiment_config
     patch_config_path = PATCH_CONFIG_DIR / args.patch_config
