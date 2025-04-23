@@ -222,6 +222,7 @@ def run_patched_inference(
     model_config,
     patch_dropout=0.0,
     dropout_strategy="layer",  # choices: layer, matrix
+    log_patches=False,
 ):
     # Initialize cache and models before loop
     kv_cache = None
@@ -232,8 +233,13 @@ def run_patched_inference(
         dropout = {
             "layers": [],
         }
+        # Note: patches are saved in a dictionary with token indices as keys
         if idx in patches and patches[idx].patch_layers:
             p = patches[idx]
+            if log_patches:
+                LOGGER.info(
+                    f"Patching {p.targets} at layer {p.patch_layers} for token idx {idx}"
+                )
 
             # Reset models for patching
             llm_recipient = copy.deepcopy(llm_recipient_base)
@@ -242,6 +248,8 @@ def run_patched_inference(
             for layer_idx in p.patch_layers:
                 if dropout_strategy == "layer" and random.random() < patch_dropout:
                     dropout["layers"].append(layer_idx)
+                    if log_patches:
+                        LOGGER.info(f"Dropping layer {layer_idx} for token idx {idx}")
                     continue
                 for logical_name, physical_name in model_config.items():
                     PATCH_FLAG = (
@@ -250,7 +258,10 @@ def run_patched_inference(
                         else True
                     )
                     if PATCH_FLAG and asdict(p.targets).get(logical_name, False):
-                        # LOGGER.info(f"Patching {logical_name} at layer {layer_idx}")
+                        if log_patches:
+                            LOGGER.info(
+                                f"Patching {logical_name} at layer {layer_idx} for token idx {idx}"
+                            )
                         patch_component(
                             llm_recipient,
                             llm_donor,
@@ -258,6 +269,8 @@ def run_patched_inference(
                             layer_idx,
                             physical_name,
                         )
+        elif log_patches:
+            LOGGER.info(f"No patch at token idx {idx}")
 
         # Get the model output (patched or not) and save kv cache
         with torch.no_grad():
@@ -293,6 +306,8 @@ def get_experiment_timestamp_dir(
     smoke_test,
 ):
     experiment_name = f"{model_name}_{patch_direction}_{patch_description}"
+    if both_directions_checkpoint is None:
+        both_directions_checkpoint = "best_saved_checkpoint"
     checkpoint_name = (
         f"{both_directions_parent}_{both_directions_checkpoint}_{timestamp}"
     )
@@ -351,19 +366,25 @@ def main(cfg):
     tokenizer = AutoTokenizer.from_pretrained(pretrained)
 
     if cfg.model.patch_direction == "sft2pre":
+        LOGGER.info(f"Loading donor model from {both_directions_path}")
         llm_donor_base = AutoModelForCausalLM.from_pretrained(both_directions_path).to(
             DEVICE
         )
+        LOGGER.info(f"Loading recipient model from {pretrained}")
         llm_recipient_base = AutoModelForCausalLM.from_pretrained(pretrained).to(DEVICE)
     elif cfg.model.patch_direction == "pre2sft":
+        LOGGER.info(f"Loading donor model from {pretrained}")
         llm_donor_base = AutoModelForCausalLM.from_pretrained(pretrained).to(DEVICE)
+        LOGGER.info(f"Loading recipient model from {both_directions_path}")
         llm_recipient_base = AutoModelForCausalLM.from_pretrained(
             both_directions_path
         ).to(DEVICE)
     elif cfg.model.patch_direction == "both2one":
+        LOGGER.info(f"Loading donor model from {both_directions_path}")
         llm_donor_base = AutoModelForCausalLM.from_pretrained(both_directions_path).to(
             DEVICE
         )
+        LOGGER.info(f"Loading recipient model from {one_direction_path}")
         llm_recipient_base = AutoModelForCausalLM.from_pretrained(
             one_direction_path
         ).to(DEVICE)
@@ -377,6 +398,7 @@ def main(cfg):
     test_sentence_template = cfg.templates.test_sentence_template
     limit = 5 if cfg.smoke_test else None
 
+    log_patches = True
     results = []
     for ex in tqdm(metadata[:limit]):
         inputs = get_inputs(ex, test_sentence_template, tokenizer)
@@ -392,7 +414,9 @@ def main(cfg):
                 llm_donor_base,
                 model_config,
                 **vars(cfg.inference_config),
+                log_patches=log_patches,
             )
+            log_patches = False
         else:
             dropout_record = {"layers": []}
             probs = torch.softmax(
