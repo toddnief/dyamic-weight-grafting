@@ -4,7 +4,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --constraint="a100|h100"
-#SBATCH --time=01:00:00
+#SBATCH --time=00:30:00
 #SBATCH --array=0-10
 
 # Set default timestamp if not provided

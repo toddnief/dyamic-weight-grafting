@@ -33,7 +33,7 @@ def set_nested(config, key_path, value):
     config[keys[-1]] = value
 
 
-def load_config(
+def load_experiment_config(
     experiment_config_path,
     patch_config_path,
     timestamp=None,
@@ -55,6 +55,12 @@ def load_config(
         set_nested(experiment_config, key, yaml.safe_load(val))
 
     return dict_to_namespace(experiment_config)
+
+
+def load_training_config(training_config_path):
+    with open(training_config_path, "r") as f:
+        training_config = yaml.safe_load(f)
+    return dict_to_namespace(training_config)
 
 
 def load_jsonl(file_path):

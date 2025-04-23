@@ -13,7 +13,7 @@ from kp.utils.constants import (
     PATCH_CONFIG_DIR,
     TIMESTAMP,
 )
-from kp.utils.utils_io import load_config
+from kp.utils.utils_io import load_experiment_config
 
 
 def load_experiment_results(
@@ -169,7 +169,7 @@ if __name__ == "__main__":
     experiment_config_path = EXPERIMENTS_CONFIG_DIR / args.experiment_config
     patch_config_path = PATCH_CONFIG_DIR / args.patch_config
 
-    cfg = load_config(
+    cfg = load_experiment_config(
         experiment_config_path,
         patch_config_path,
         timestamp=args.timestamp,

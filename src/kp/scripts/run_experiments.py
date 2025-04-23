@@ -19,7 +19,7 @@ from kp.utils.constants import (
     PATCH_CONFIG_DIR,
     TIMESTAMP,
 )
-from kp.utils.utils_io import load_config, namespace_to_dict
+from kp.utils.utils_io import load_experiment_config, namespace_to_dict
 
 MODEL_CONFIGS = {
     "gemma": {
@@ -503,7 +503,7 @@ if __name__ == "__main__":
     LOGGER.info(f"Running experiments with experiment config: {experiment_config_path}")
     LOGGER.info(f"Running experiments with patch config: {patch_config_path}")
 
-    cfg = load_config(
+    cfg = load_experiment_config(
         experiment_config_path,
         patch_config_path,
         timestamp=args.timestamp,

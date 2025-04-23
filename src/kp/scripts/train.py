@@ -1,7 +1,6 @@
 import argparse
 
 import torch
-import yaml
 from datasets import load_dataset
 from transformers import Trainer, TrainingArguments
 
@@ -16,43 +15,34 @@ from kp.utils.constants import (
     TRAINED_MODELS_DIR,
     TRAINING_CONFIG_DIR,
 )
+from kp.utils.utils_io import load_training_config
 
 
-def train(config_path):
-    LOGGER.info("Loading configuration...")
-    with open(config_path, "r") as file:
-        config = yaml.safe_load(file)
+def train(cfg):
+    smoke_test = cfg.smoke_test
+    freeze_embeddings = cfg.training.freeze_embeddings
+    train_unembeddings_only = cfg.training.train_unembeddings_only
 
-    SMOKE_TEST = config["smoke_test"]
-    FREEZE_EMBEDDINGS = config["training"]["freeze_embeddings"]
-    TRAIN_UNEMBEDDINGS_ONLY = config["training"]["train_unembeddings_only"]
+    run_name = cfg.run_name + "_smoke_test" if smoke_test else cfg.run_name
 
-    RUN_NAME = config["run_name"]
-    RUN_NAME = RUN_NAME + "_smoke_test" if SMOKE_TEST else RUN_NAME
+    data_dir = DATA_DIR / cfg.data_dir / "dataset"
 
-    data_dir = DATA_DIR / config["data_dir"] / "dataset"
-
-    # INCLUDE_REVERSED = config["data_options"]["include_reversed"]
-
-    model = config["model"]
-    model_checkpoint = config["model_checkpoint"]
+    model = cfg.model
+    model_checkpoint = cfg.model_checkpoint
     if model_checkpoint is None:
         model_checkpoint = MODEL_TO_HFID[model]
     model, tokenizer, preprocess_data = model_factory(model, model_checkpoint)
     model_name = model_checkpoint.split("/")[-1]
 
-    model_dir_name = model_name if not SMOKE_TEST else f"{model_name}_smoke_test"
-    run_dir = RUN_NAME + "_" + TIMESTAMP
+    model_dir_name = model_name if not smoke_test else f"{model_name}_smoke_test"
+    run_dir = run_name + "_" + TIMESTAMP
     output_dir = TRAINED_MODELS_DIR / model_dir_name / run_dir
     output_dir.mkdir(parents=True, exist_ok=True)
-
-    LOGITS_DIR = output_dir / "logits"
-    LOGITS_DIR.mkdir(parents=True, exist_ok=True)
 
     ### WANDB & LOGGING ###
     wandb.init(
         project="reversal",
-        name=RUN_NAME,
+        name=run_name,
     )
 
     ### CUSTOM DATA PREP ###
@@ -64,6 +54,7 @@ def train(config_path):
     dataset["validation"] = dataset.pop("test")
 
     # TODO: How do I actually want to handle validation data...
+    # INCLUDE_REVERSED = config["data_options"]["include_reversed"]
     # Note: Validation data is the reversed data so include in the training set for reversed
     # logging.info("Including reversed data...")
     # if INCLUDE_REVERSED:
@@ -74,29 +65,29 @@ def train(config_path):
     ### TRAINING PREP & CALLBACKS ###
     smoke_test_limit = (
         min(20, len(dataset["train"]), len(dataset["validation"]))
-        if SMOKE_TEST
+        if smoke_test
         else None
     )
     dataset["train"] = (
         dataset["train"]
-        if not SMOKE_TEST
+        if not smoke_test
         else dataset["train"].select(range(smoke_test_limit))
     )
     dataset["validation"] = (
         dataset["validation"]
-        if not SMOKE_TEST
+        if not smoke_test
         else dataset["validation"].select(range(smoke_test_limit))
     )
 
     num_training_examples = len(dataset["train"])
-    train_batch_size = config["training"]["per_device_train_batch_size"]
+    train_batch_size = cfg.training.per_device_train_batch_size
     steps_per_epoch = num_training_examples // train_batch_size
     halfway_steps = max(steps_per_epoch // 2, 1)
 
     callbacks = [LoggingCallback]
 
     # Note: Doesn't generalize to other models besides gemma
-    if FREEZE_EMBEDDINGS:
+    if freeze_embeddings:
         if "gemma" in model_name:
             LOGGER.info("Freezing output embeddings...")
             for param in model.get_output_embeddings().parameters():
@@ -107,7 +98,7 @@ def train(config_path):
                 param.requires_grad = False
 
     # Note: If this is true, we train only the unembeddings
-    if TRAIN_UNEMBEDDINGS_ONLY:
+    if train_unembeddings_only:
         LOGGER.info("Freezing all parameters except output embeddings...")
         for param in model.parameters():
             param.requires_grad = False
@@ -126,19 +117,17 @@ def train(config_path):
 
     training_args = TrainingArguments(
         output_dir=output_dir,
-        learning_rate=float(config["training"]["learning_rate"]),
-        weight_decay=float(config["training"]["weight_decay"]),
+        learning_rate=float(cfg.training.learning_rate),
+        weight_decay=float(cfg.training.weight_decay),
         per_device_train_batch_size=train_batch_size,
-        per_device_eval_batch_size=config["training"]["per_device_eval_batch_size"],
-        num_train_epochs=config["training"]["num_train_epochs"]
-        if not SMOKE_TEST
-        else 2,
-        eval_strategy=config["training"]["eval_strategy"],
+        per_device_eval_batch_size=cfg.training.per_device_eval_batch_size,
+        num_train_epochs=cfg.training.num_train_epochs if not smoke_test else 2,
+        eval_strategy=cfg.training.eval_strategy,
         eval_steps=halfway_steps,
-        save_strategy=config["training"]["save_strategy"],
-        save_total_limit=config["training"]["save_total_limit"],
-        load_best_model_at_end=config["training"]["load_best_model_at_end"],
-        fp16=config["training"]["fp16"] and torch.cuda.is_available(),
+        save_strategy=cfg.training.save_strategy,
+        save_total_limit=cfg.training.save_total_limit,
+        load_best_model_at_end=cfg.training.load_best_model_at_end,
+        fp16=cfg.training.fp16 and torch.cuda.is_available(),
         report_to="wandb",  # "none" to disable logging, "wandb" to log to wandb
     )
 
@@ -175,5 +164,6 @@ if __name__ == "__main__":
 
     yaml_path = TRAINING_CONFIG_DIR / args.config
     LOGGER.info(f"Training with config: {yaml_path}")
+    cfg = load_training_config(yaml_path)
 
-    train(yaml_path)
+    train(cfg)
