@@ -21,7 +21,7 @@ from kp.utils.utils_io import load_training_config
 def train(cfg):
     smoke_test = cfg.smoke_test
     freeze_embeddings = cfg.training.freeze_embeddings
-    train_unembeddings_only = cfg.training.train_unembeddings_only
+    freeze_unembeddings = cfg.training.freeze_unembeddings
 
     run_name = cfg.run_name + "_smoke_test" if smoke_test else cfg.run_name
 
@@ -53,7 +53,7 @@ def train(cfg):
     dataset = dataset["train"].train_test_split(test_size=0.2)
     dataset["validation"] = dataset.pop("test")
 
-    # TODO: How do I actually want to handle validation data...
+    # TODO: This is outdated. We should be able to just load specific json files
     # INCLUDE_REVERSED = config["data_options"]["include_reversed"]
     # Note: Validation data is the reversed data so include in the training set for reversed
     # logging.info("Including reversed data...")
@@ -86,31 +86,20 @@ def train(cfg):
 
     callbacks = [LoggingCallback]
 
-    # Note: Doesn't generalize to other models besides gemma
+    # TODO: Set this up to handle other models besides gemma
     if freeze_embeddings:
         if "gemma" in model_name:
-            LOGGER.info("Freezing output embeddings...")
-            for param in model.get_output_embeddings().parameters():
-                param.requires_grad = False
-            # Note: not totally sure how tying works so...freeze the input_embeddings too
-            # Could check this by printing stuff out too...
+            LOGGER.info("Freezing input embeddings...")
             for param in model.get_input_embeddings().parameters():
                 param.requires_grad = False
 
-    # Note: If this is true, we train only the unembeddings
-    if train_unembeddings_only:
-        LOGGER.info("Freezing all parameters except output embeddings...")
-        for param in model.parameters():
-            param.requires_grad = False
+    if freeze_unembeddings:
+        if "gemma" in model_name:
+            LOGGER.info("Freezing unembeddings...")
+            for param in model.get_output_embeddings().parameters():
+                param.requires_grad = False
 
-        # TODO: Does this mean the input embeddings are being trained also?
-        for param in model.get_output_embeddings().parameters():
-            param.requires_grad = True
-
-    # TODO: Set up freezing specific layers here
-    # for layer_index in range(6):
-    #   for param in model.bert.encoder.layer[layer_index].parameters():
-    #       param.requires_grad = False
+    # TODO: Add freezing specific layers here
     # (i) patching ↔️  with hidden states from ➡️ , causes an immediate lowering of probability b/c the mechanism is disrupted
     # (ii) the layers close to the input don't work when patching ➡️  with hidden states from ↔️ , because those are even more distorted
     # I think freezing the last layer, then the last two layers, etc. and seeing if where patching work changes would be a good place to start with verifying this or counting it out

@@ -8,7 +8,7 @@ from kp.datasets.metadata.metadata_fake_movies import (
 )
 
 METADATA_FUNCTIONS = {
-    "fake_movies": {
+    "fake_movies_fake_actors": {
         "metadata_fn": create_fake_movie_fake_actors_metadata,
         "reverse_entity_fn": reverse_fake_movie_entity_dict,
     },

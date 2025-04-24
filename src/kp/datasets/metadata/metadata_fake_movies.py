@@ -9,7 +9,7 @@ from kp.datasets.metadata.metadata_utils import (
     generate_unique_movies,
     generate_unique_names,
 )
-from kp.utils.constants import ACTOR_NAMES_PATH, logging
+from kp.utils.constants import ACTOR_NAMES_PATH, LOGGER
 
 fake = Faker()
 
@@ -19,11 +19,11 @@ def create_fake_movie_fake_actors_metadata(
 ):
     n_examples = 10 if smoke_test else n_examples
 
-    logging.info(f"Generating {n_examples * names_multiple} names...")
+    LOGGER.info(f"Generating {n_examples * names_multiple} names...")
     names = generate_unique_names(n_examples, names_multiple)
-    logging.info(f"Generating {n_examples} movies...")
+    LOGGER.info(f"Generating {n_examples} movies...")
     movies = generate_unique_movies(n_examples)
-    logging.info(f"Generating {n_examples} cities...")
+    LOGGER.info(f"Generating {n_examples} cities...")
     cities = generate_unique_cities(n_examples)
 
     metadata = []
@@ -64,13 +64,13 @@ def create_fake_movie_real_actors_metadata(
 ):
     n_examples = 10 if smoke_test else n_examples
 
-    logging.info("Loading real actors...")
+    LOGGER.info("Loading real actors...")
     real_actors = load_real_actors()
-    logging.info(f"Generating {n_examples} names...")
+    LOGGER.info(f"Generating {n_examples} names...")
     names = generate_unique_names(n_examples)
-    logging.info(f"Generating {n_examples} movies...")
+    LOGGER.info(f"Generating {n_examples} movies...")
     movies = generate_unique_movies(n_examples)
-    logging.info(f"Generating {n_examples} cities...")
+    LOGGER.info(f"Generating {n_examples} cities...")
     cities = generate_unique_cities(n_examples)
 
     metadata = []

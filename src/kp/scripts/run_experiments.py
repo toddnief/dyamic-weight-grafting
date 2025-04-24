@@ -140,6 +140,28 @@ def patch_component(llm_receipient, llm_donor, base_path, layer_idx, attr_name):
     receipient_component.load_state_dict(donor_component.state_dict())
 
 
+# TODO: Idea for patching slices of matrices
+# def patch_component(
+#     llm_recipient,
+#     llm_donor,
+#     base_path,
+#     layer_idx,
+#     attr_name,
+#     slice_range: Optional[slice] = None,  # e.g., slice(0, d_model) for Q
+# ):
+#     recipient_layer = get_attr(llm_recipient, f"{base_path}.{layer_idx}")
+#     donor_layer = get_attr(llm_donor, f"{base_path}.{layer_idx}")
+#     recipient_comp = get_attr(recipient_layer, attr_name)
+#     donor_comp = get_attr(donor_layer, attr_name)
+
+#     if slice_range is None:
+#         recipient_comp.load_state_dict(donor_comp.state_dict())
+#     else:
+#         with torch.no_grad():
+#             recipient_comp.weight[slice_range] = donor_comp.weight[slice_range]
+#             recipient_comp.bias[slice_range] = donor_comp.bias[slice_range]
+
+
 def get_layers_dict(n_layers):
     all_layers = list(range(n_layers))
     quarter = n_layers // 4
