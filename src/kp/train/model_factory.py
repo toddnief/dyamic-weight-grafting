@@ -9,7 +9,7 @@ from transformers import (
     GPTNeoXForCausalLM,
 )
 
-from kp.utils.constants import logging
+from kp.utils.constants import LOGGER
 
 
 def setup_gpt(model_checkpoint):
@@ -18,20 +18,23 @@ def setup_gpt(model_checkpoint):
     model.config.pad_token_id = model.config.eos_token_id
     tokenizer.pad_token = tokenizer.eos_token
 
-    def preprocess_data(examples):
-        texts = [
-            examples["prompt"][i] + tokenizer.eos_token + examples["completion"][i]
-            for i in range(len(examples["prompt"]))
-        ]
+    def preprocess_data(examples, max_length=1024):
+        # Ensure GPT-2 has a padding token
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+
         model_inputs = tokenizer(
-            texts,
-            max_length=1024,
+            examples["text"],
+            max_length=max_length,
             truncation=True,
             padding="max_length",
             return_tensors="pt",
         )
-        model_inputs["labels"] = model_inputs.input_ids.detach().clone()
-        model_inputs["labels"][model_inputs["labels"] == tokenizer.pad_token_id] = -100
+
+        labels = model_inputs["input_ids"].clone()
+        labels[labels == tokenizer.pad_token_id] = -100  # Mask loss on padding tokens
+        model_inputs["labels"] = labels
+
         return model_inputs
 
     return model, tokenizer, preprocess_data
@@ -98,7 +101,7 @@ def setup_pythia(model_checkpoint):
 
 
 def setup_gemma(model_checkpoint):
-    logging.info("Loading gemma model...")
+    LOGGER.info("Loading gemma model...")
     tokenizer = AutoTokenizer.from_pretrained(model_checkpoint)
     model = AutoModelForCausalLM.from_pretrained(model_checkpoint, device_map="auto")
 
