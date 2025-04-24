@@ -39,6 +39,15 @@ MODEL_CONFIGS = {
         "q": "attention.query_key_value",  # fused, so must handle specially
         "o": "attention.dense",
     },
+    "gpt2": {
+        "layers": "transformer.h",
+        "mlp_up": "mlp.c_fc",
+        "mlp_down": "mlp.c_proj",
+        "q": "attn.c_attn",
+        "k": "attn.c_attn",
+        "v": "attn.c_attn",
+        "o": "attn.c_proj",
+    },
 }
 
 
