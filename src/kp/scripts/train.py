@@ -1,4 +1,5 @@
 import argparse
+import json
 
 import torch
 from datasets import load_dataset
@@ -15,7 +16,7 @@ from kp.utils.constants import (
     TRAINED_MODELS_DIR,
     TRAINING_CONFIG_DIR,
 )
-from kp.utils.utils_io import load_training_config
+from kp.utils.utils_io import load_training_config, namespace_to_dict
 
 
 def train(cfg):
@@ -39,6 +40,13 @@ def train(cfg):
     output_dir = TRAINED_MODELS_DIR / model_dir_name / run_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Save the training configuration as JSON
+    config_path = output_dir / "training_config.json"
+    with open(config_path, "w") as f:
+        config_dict = namespace_to_dict(cfg)
+        json.dump(config_dict, f, indent=2)
+    LOGGER.info(f"Saved training configuration to {config_path}")
+
     ### WANDB & LOGGING ###
     wandb.init(
         project="reversal",
@@ -46,21 +54,27 @@ def train(cfg):
     )
 
     ### CUSTOM DATA PREP ###
-    LOGGER.info("Loading custom dataset...")
-    dataset = load_dataset("json", data_dir=data_dir)
-    dataset = dataset.map(preprocess_data, batched=True)
+    if cfg.data_options.dataset_type == "A2B":
+        data_files = {
+            "train": [str(f) for f in data_dir.glob("*.json") if "A2B" in f.name]
+        }
+        LOGGER.info(f"Loading custom dataset: {data_files}...")
+        dataset = load_dataset("json", data_files=data_files)
+        dataset = dataset.map(preprocess_data, batched=True)
+    elif cfg.data_options.dataset_type == "B2A":
+        data_files = {
+            "train": [str(f) for f in data_dir.glob("*.json") if "B2A" in f.name]
+        }
+        LOGGER.info(f"Loading custom dataset: {data_files}...")
+        dataset = load_dataset("json", data_files=data_files)
+        dataset = dataset.map(preprocess_data, batched=True)
+    elif cfg.data_options.dataset_type == "all":
+        LOGGER.info(f"Loading custom dataset: {data_dir}...")
+        dataset = load_dataset("json", data_dir=data_dir)
+        dataset = dataset.map(preprocess_data, batched=True)
 
     dataset = dataset["train"].train_test_split(test_size=0.2)
     dataset["validation"] = dataset.pop("test")
-
-    # TODO: This is outdated. We should be able to just load specific json files
-    # INCLUDE_REVERSED = config["data_options"]["include_reversed"]
-    # Note: Validation data is the reversed data so include in the training set for reversed
-    # logging.info("Including reversed data...")
-    # if INCLUDE_REVERSED:
-    #     dataset["train"] = concatenate_datasets(
-    #         [dataset["train"], dataset["validation"]]
-    #     )
 
     ### TRAINING PREP & CALLBACKS ###
     smoke_test_limit = (
@@ -98,11 +112,6 @@ def train(cfg):
             LOGGER.info("Freezing unembeddings...")
             for param in model.get_output_embeddings().parameters():
                 param.requires_grad = False
-
-    # TODO: Add freezing specific layers here
-    # (i) patching ↔️  with hidden states from ➡️ , causes an immediate lowering of probability b/c the mechanism is disrupted
-    # (ii) the layers close to the input don't work when patching ➡️  with hidden states from ↔️ , because those are even more distorted
-    # I think freezing the last layer, then the last two layers, etc. and seeing if where patching work changes would be a good place to start with verifying this or counting it out
 
     training_args = TrainingArguments(
         output_dir=output_dir,

@@ -4,7 +4,7 @@ import json
 import random
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import torch
 from tqdm import tqdm
@@ -24,29 +24,45 @@ from kp.utils.utils_io import load_experiment_config, namespace_to_dict
 MODEL_CONFIGS = {
     "gemma": {
         "layers": "model.layers",
-        "mlp_up": "mlp.up_proj",
-        "mlp_down": "mlp.down_proj",
-        "gate": "mlp.gate_proj",
-        "q": "self_attn.q_proj",
-        "k": "self_attn.k_proj",
-        "v": "self_attn.v_proj",
-        "o": "self_attn.o_proj",
+        "components": {
+            "mlp_up": {"component_path": "mlp.up_proj"},
+            "mlp_down": {"component_path": "mlp.down_proj"},
+            "gate": {"component_path": "mlp.gate_proj"},
+            "q": {"component_path": "self_attn.q_proj"},
+            "k": {"component_path": "self_attn.k_proj"},
+            "v": {"component_path": "self_attn.v_proj"},
+            "o": {"component_path": "self_attn.o_proj"},
+        },
     },
     "pythia-2.8b": {
         "layers": "gpt_neox.layers",
-        "mlp_up": "mlp.dense_h_to_4h",
-        "mlp_down": "mlp.dense_4h_to_h",
-        "q": "attention.query_key_value",  # fused, so must handle specially
-        "o": "attention.dense",
+        "components": {
+            "mlp_up": {"component_path": "mlp.dense_h_to_4h"},
+            "mlp_down": {"component_path": "mlp.dense_4h_to_h"},
+            "q": {
+                "component_path": "attention.query_key_value"
+            },  # concatenated, so must handle specially
+            "k": {
+                "component_path": "attention.key_value",
+                "slice_range": slice(0, 768),
+            },
+            "v": {
+                "component_path": "attention.key_value",
+                "slice_range": slice(768, 1536),
+            },
+            "o": {"component_path": "attention.dense"},
+        },
     },
     "gpt2": {
         "layers": "transformer.h",
-        "mlp_up": "mlp.c_fc",
-        "mlp_down": "mlp.c_proj",
-        "q": "attn.c_attn",
-        "k": "attn.c_attn",
-        "v": "attn.c_attn",
-        "o": "attn.c_proj",
+        "components": {
+            "mlp_up": {"component_path": "mlp.c_fc"},
+            "mlp_down": {"component_path": "mlp.c_proj"},
+            "q": {"component_path": "attn.c_attn", "slice_range": slice(0, 768)},
+            "k": {"component_path": "attn.c_attn", "slice_range": slice(768, 1536)},
+            "v": {"component_path": "attn.c_attn", "slice_range": slice(1536, 2304)},
+            "o": {"component_path": "attn.c_proj"},
+        },
     },
 }
 
@@ -141,34 +157,29 @@ def get_attr(obj, attr_path):
     return obj
 
 
-def patch_component(llm_receipient, llm_donor, base_path, layer_idx, attr_name):
-    receipient_layer = get_attr(llm_receipient, f"{base_path}.{layer_idx}")
-    donor_layer = get_attr(llm_donor, f"{base_path}.{layer_idx}")
-    receipient_component = get_attr(receipient_layer, attr_name)
-    donor_component = get_attr(donor_layer, attr_name)
-    receipient_component.load_state_dict(donor_component.state_dict())
+# TODO: Add SVD patching (need to cache SVD)
+def patch_component(
+    llm_donor,
+    llm_recipient,
+    layers_path,
+    layer_idx,
+    component_path,
+    slice_range: Optional[slice] = None,
+):
+    recipient_layer = get_attr(llm_recipient, f"{layers_path}.{layer_idx}")
+    recipient_component = get_attr(recipient_layer, component_path)
 
+    donor_layer = get_attr(llm_donor, f"{layers_path}.{layer_idx}")
+    donor_component = get_attr(donor_layer, component_path)
 
-# TODO: Idea for patching slices of matrices
-# def patch_component(
-#     llm_recipient,
-#     llm_donor,
-#     base_path,
-#     layer_idx,
-#     attr_name,
-#     slice_range: Optional[slice] = None,  # e.g., slice(0, d_model) for Q
-# ):
-#     recipient_layer = get_attr(llm_recipient, f"{base_path}.{layer_idx}")
-#     donor_layer = get_attr(llm_donor, f"{base_path}.{layer_idx}")
-#     recipient_comp = get_attr(recipient_layer, attr_name)
-#     donor_comp = get_attr(donor_layer, attr_name)
-
-#     if slice_range is None:
-#         recipient_comp.load_state_dict(donor_comp.state_dict())
-#     else:
-#         with torch.no_grad():
-#             recipient_comp.weight[slice_range] = donor_comp.weight[slice_range]
-#             recipient_comp.bias[slice_range] = donor_comp.bias[slice_range]
+    if slice_range is None:
+        recipient_component.load_state_dict(donor_component.state_dict())
+    else:
+        with torch.no_grad():
+            recipient_component.weight[slice_range] = donor_component.weight[
+                slice_range
+            ]
+            recipient_component.bias[slice_range] = donor_component.bias[slice_range]
 
 
 def get_layers_dict(n_layers):
@@ -248,8 +259,8 @@ def get_patches(ex, patch_config, n_layers, tokenizer, input_ids):
 def run_patched_inference(
     inputs,
     patches,
-    llm_recipient_base,
     llm_donor_base,
+    llm_recipient_base,
     model_config,
     patch_dropout=0.0,
     dropout_strategy="layer",  # choices: layer, matrix
@@ -282,7 +293,9 @@ def run_patched_inference(
                     if log_patches:
                         LOGGER.info(f"Dropping layer {layer_idx} for token idx {idx}")
                     continue
-                for logical_name, physical_name in model_config.items():
+                for logical_name, component_config in model_config[
+                    "components"
+                ].items():
                     PATCH_FLAG = (
                         random.random() < patch_dropout
                         if dropout_strategy == "matrix"
@@ -294,11 +307,11 @@ def run_patched_inference(
                                 f"Patching {logical_name} at layer {layer_idx} for token idx {idx}"
                             )
                         patch_component(
-                            llm_recipient,
                             llm_donor,
+                            llm_recipient,
                             model_config["layers"],
                             layer_idx,
-                            physical_name,
+                            **component_config,
                         )
         elif log_patches:
             LOGGER.info(f"No patch at token idx {idx}")
@@ -348,6 +361,8 @@ def get_experiment_timestamp_dir(
 
 def main(cfg):
     models_dir = Path(cfg.paths.models_dir)
+    pretrained_model_name = cfg.model.pretrained
+
     # Load best saved checkpoint if not specified
     if cfg.paths.both_directions_checkpoint is not None:
         both_directions_path = (
@@ -375,7 +390,7 @@ def main(cfg):
     # Set up directories
     metadata_path = cfg.paths.metadata
     experiment_timestamp_dir = get_experiment_timestamp_dir(
-        cfg.model.pretrained,
+        pretrained_model_name,
         cfg.paths.both_directions_parent,
         cfg.paths.both_directions_checkpoint,
         cfg.model.patch_direction,
@@ -441,8 +456,8 @@ def main(cfg):
             probs, dropout_record = run_patched_inference(
                 inputs,
                 patches,
-                llm_recipient_base,
                 llm_donor_base,
+                llm_recipient_base,
                 model_config,
                 **vars(cfg.inference_config),
                 log_patches=log_patches,
