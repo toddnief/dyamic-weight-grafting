@@ -3,7 +3,6 @@ import copy
 import json
 import random
 from dataclasses import asdict, dataclass, field
-from pathlib import Path
 from typing import List, Optional, Tuple
 
 import torch
@@ -18,6 +17,7 @@ from kp.utils.constants import (
     MODEL_TO_HFID,
     PATCH_CONFIG_DIR,
     TIMESTAMP,
+    TRAINED_MODELS_DIR,
 )
 from kp.utils.utils_io import load_experiment_config, namespace_to_dict
 
@@ -360,7 +360,7 @@ def get_experiment_timestamp_dir(
 
 
 def main(cfg):
-    models_dir = Path(cfg.paths.models_dir)
+    models_dir = TRAINED_MODELS_DIR / cfg.model.pretrained
     pretrained_model_name = cfg.model.pretrained
 
     # Load best saved checkpoint if not specified
@@ -408,7 +408,6 @@ def main(cfg):
 
     # Load models
     pretrained = MODEL_TO_HFID[cfg.model.pretrained]
-
     tokenizer = AutoTokenizer.from_pretrained(pretrained)
 
     if cfg.model.patch_direction == "sft2pre":
