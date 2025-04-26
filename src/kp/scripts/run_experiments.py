@@ -10,6 +10,7 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from kp.utils.constants import (
+    DATA_DIR,
     DEVICE,
     EXPERIMENTS_CONFIG_DIR,
     EXPERIMENTS_DIR,
@@ -388,7 +389,7 @@ def main(cfg):
         patch_description = patch_description.split("config_patches_")[1]
 
     # Set up directories
-    metadata_path = cfg.paths.metadata
+    metadata_path = DATA_DIR / cfg.paths.dataset_dir / "metadata" / "metadata.jsonl"
     experiment_timestamp_dir = get_experiment_timestamp_dir(
         pretrained_model_name,
         cfg.paths.both_directions_parent,
