@@ -56,14 +56,14 @@ def train(cfg):
     ### CUSTOM DATA PREP ###
     if cfg.data_options.dataset_type == "A2B":
         data_files = {
-            "train": [str(f) for f in data_dir.glob("*.json") if "A2B" in f.name]
+            "train": [str(f) for f in data_dir.glob("*.jsonl") if "A2B" in f.name]
         }
         LOGGER.info(f"Loading custom dataset: {data_files}...")
         dataset = load_dataset("json", data_files=data_files)
         dataset = dataset.map(preprocess_data, batched=True)
     elif cfg.data_options.dataset_type == "B2A":
         data_files = {
-            "train": [str(f) for f in data_dir.glob("*.json") if "B2A" in f.name]
+            "train": [str(f) for f in data_dir.glob("*.jsonl") if "B2A" in f.name]
         }
         LOGGER.info(f"Loading custom dataset: {data_files}...")
         dataset = load_dataset("json", data_files=data_files)
