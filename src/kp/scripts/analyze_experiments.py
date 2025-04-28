@@ -131,7 +131,7 @@ def analyze_experiments(cfg) -> None:
         cfg.paths.both_directions_checkpoint,
         cfg.model.patch_direction,
         patch_description,
-        cfg.dataset_name,
+        cfg.paths.dataset_name,
         cfg.timestamp,
         cfg.smoke_test,
     )
