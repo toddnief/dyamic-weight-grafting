@@ -1,5 +1,6 @@
 import argparse
 import json
+import re
 
 import torch
 from datasets import load_dataset
@@ -24,9 +25,8 @@ def train(cfg):
     freeze_embeddings = cfg.training.freeze_embeddings
     freeze_unembeddings = cfg.training.freeze_unembeddings
 
-    run_name = cfg.run_name + "_smoke_test" if smoke_test else cfg.run_name
-
     data_dir = DATA_DIR / cfg.data_dir / "dataset"
+    dataset_name = re.sub(r"_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$", "", cfg.data_dir)
 
     model = cfg.model
     model_checkpoint = cfg.model_checkpoint
@@ -35,9 +35,9 @@ def train(cfg):
     model, tokenizer, preprocess_data = model_factory(model, model_checkpoint)
     model_name = model_checkpoint.split("/")[-1]
 
-    model_dir_name = model_name if not smoke_test else f"{model_name}_smoke_test"
-    run_dir = run_name + "_" + TIMESTAMP
-    output_dir = TRAINED_MODELS_DIR / model_dir_name / run_dir
+    run_dir = cfg.data_options.dataset_type + "_" + TIMESTAMP
+    run_dir = run_dir if not smoke_test else f"{run_dir}_smoke_test"
+    output_dir = TRAINED_MODELS_DIR / model_name / dataset_name / run_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Save the training configuration as JSON
@@ -50,7 +50,7 @@ def train(cfg):
     ### WANDB & LOGGING ###
     wandb.init(
         project="reversal",
-        name=run_name,
+        name=run_dir,
     )
 
     ### CUSTOM DATA PREP ###

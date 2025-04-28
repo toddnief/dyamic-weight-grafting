@@ -361,7 +361,7 @@ def get_experiment_timestamp_dir(
 
 
 def main(cfg):
-    models_dir = TRAINED_MODELS_DIR / cfg.model.pretrained
+    models_dir = TRAINED_MODELS_DIR / cfg.model.pretrained / cfg.paths.dataset_name
     pretrained_model_name = cfg.model.pretrained
 
     # Load best saved checkpoint if not specified
@@ -389,14 +389,20 @@ def main(cfg):
         patch_description = patch_description.split("config_patches_")[1]
 
     # Set up directories
-    metadata_path = DATA_DIR / cfg.paths.dataset_dir / "metadata" / "metadata.jsonl"
+    metadata_path = (
+        DATA_DIR
+        / cfg.paths.dataset_name
+        / cfg.paths.dataset_dir
+        / "metadata"
+        / "metadata.jsonl"
+    )
     experiment_timestamp_dir = get_experiment_timestamp_dir(
         pretrained_model_name,
         cfg.paths.both_directions_parent,
         cfg.paths.both_directions_checkpoint,
         cfg.model.patch_direction,
         patch_description,
-        cfg.dataset_name,
+        cfg.paths.dataset_name,
         cfg.timestamp,
         cfg.smoke_test,
     )
