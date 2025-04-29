@@ -350,14 +350,20 @@ def get_experiment_timestamp_dir(
     timestamp,
     smoke_test,
 ):
-    experiment_name = f"{model_name}_{patch_direction}_{patch_description}"
     if both_directions_checkpoint is None:
         both_directions_checkpoint = "best_saved_checkpoint"
     checkpoint_name = (
         f"{both_directions_parent}_{both_directions_checkpoint}_{timestamp}"
     )
     timestamp_dir = checkpoint_name + "_smoke_test" if smoke_test else checkpoint_name
-    return EXPERIMENTS_DIR / dataset_name / experiment_name / timestamp_dir
+    return (
+        EXPERIMENTS_DIR
+        / dataset_name
+        / model_name
+        / patch_direction
+        / patch_description
+        / timestamp_dir
+    )
 
 
 def main(cfg):
