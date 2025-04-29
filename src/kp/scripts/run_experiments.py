@@ -367,7 +367,11 @@ def get_experiment_timestamp_dir(
 
 
 def main(cfg):
-    models_dir = TRAINED_MODELS_DIR / cfg.model.pretrained / cfg.paths.dataset_name
+    models_dir = (
+        TRAINED_MODELS_DIR
+        / MODEL_TO_HFID[cfg.model.pretrained]
+        / cfg.paths.dataset_name
+    )
     pretrained_model_name = cfg.model.pretrained
 
     # Load best saved checkpoint if not specified
