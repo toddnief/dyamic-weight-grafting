@@ -80,9 +80,9 @@ def main(config):
     LOGGER.info("Creating metadata...")
     metadata = create_metadata(**metadata_args)
 
-    # Note: This is kind of hacky for the movies datasets since we want to actually reverse the entity dict
-    # Not necessary for the battles dataset
     if REVERSED_EXAMPLES:
+        # Note: This is kind of hacky for the movies datasets since we want to actually reverse the entity dict
+        # Not necessary for the battles dataset
         reverse_entity_dict = METADATA_FUNCTIONS[metadata_type].get(
             "reverse_entity_fn", None
         )
