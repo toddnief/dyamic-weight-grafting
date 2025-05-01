@@ -202,8 +202,8 @@ def get_layers_dict(n_layers):
     return layers_dict
 
 
-def get_inputs(ex, test_sentence_template, tokenizer, preposition=" alongside"):
-    test_sentence = test_sentence_template.format(**ex, preposition=preposition)
+def get_inputs(ex, test_sentence_template, tokenizer):
+    test_sentence = test_sentence_template.format(**ex)
     inputs = tokenizer(test_sentence, return_tensors="pt").to(DEVICE)
     return inputs
 
@@ -234,6 +234,8 @@ def get_patches(ex, patch_config, n_layers, tokenizer, input_ids):
         if hasattr(patch_spec, "value"):
             span = patch_spec.value
         else:
+            # Append prefix if defined
+            # Note: prefix is used to append a space to the span for correct tokenization
             prefix = getattr(patch_spec, "prefix", "")
             span = prefix + ex[getattr(patch_spec, "key")]
 
@@ -458,11 +460,14 @@ def main(cfg):
     n_layers = len(get_attr(llm_recipient_base, model_config["layers"]))
 
     test_sentence_template = cfg.templates.test_sentence_template
+    test_preposition = cfg.templates.preposition
     limit = 5 if cfg.smoke_test else None
 
     log_patches = True
     results = []
     for ex in tqdm(metadata[:limit]):
+        # Hacky way to handle preposition - add directly to example
+        ex["preposition"] = test_preposition
         inputs = get_inputs(ex, test_sentence_template, tokenizer)
 
         if cfg.patching_flag:
