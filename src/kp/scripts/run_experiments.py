@@ -225,23 +225,53 @@ def get_patches(ex, patch_config, n_layers, tokenizer, input_ids):
                 patch_layers=patch_layers,
             )
 
-    for patch_name, patch_spec in patch_config.patches.__dict__.items():
+    for patch_name, patch_spec in vars(patch_config.patches).items():
         # Skip other patch spec — already handled above
         if patch_name == "other":
             continue
 
         # Get span text from patch_config or from example
-        if hasattr(patch_spec, "value"):
-            span = patch_spec.value
-        else:
-            # Append prefix if defined
-            # Note: prefix is used to append a space to the span for correct tokenization
-            prefix = getattr(patch_spec, "prefix", "")
-            span = prefix + ex[getattr(patch_spec, "key")]
+        # if hasattr(patch_spec, "value"):
+        #     span = patch_spec.value
+        # else:
+        #     # Append prefix if defined
+        #     # Note: prefix is used to append a space to the span for correct tokenization
+        #     prefix = getattr(patch_spec, "prefix", "")
+        #     span = prefix + ex[getattr(patch_spec, "key")]
 
-        # Locate span in input_ids and get start and end indeces
-        tokens = tokenizer.encode(span, add_special_tokens=False, return_tensors="pt")
-        start_idx, end_idx = find_sublist_index(input_ids, tokens)
+        # # Locate span in input_ids and get start and end indeces
+        # tokens = tokenizer.encode(span, add_special_tokens=False, return_tensors="pt")
+        # LOGGER.info(f"Span: {span}")
+        # LOGGER.info(f"Tokens: {tokens}")
+        # try:
+        #     start_idx, end_idx = find_sublist_index(input_ids, tokens)
+        # except ValueError:
+        #     LOGGER.info("Span not found in input_ids")
+        #     breakpoint()
+
+        # Get base span from patch_spec or example
+        # if hasattr(patch_spec, "value"):
+        #     span = patch_spec.value
+        # else:
+        #     raw = ex[getattr(patch_spec, "key")]
+        #     prefix = getattr(patch_spec, "prefix", "")
+        #     span = prefix + raw
+
+        # Try to locate span in input_ids (with and without space)
+        span = ex[getattr(patch_spec, "key")]
+        variants = [span, span.lstrip()] if span.startswith(" ") else [span, " " + span]
+
+        for variant in variants:
+            token_ids = tokenizer.encode(
+                variant, add_special_tokens=False, return_tensors="pt"
+            )
+            try:
+                start_idx, end_idx = find_sublist_index(input_ids, token_ids)
+                break
+            except ValueError:
+                continue
+        else:
+            raise ValueError(f"Span not found in input_ids for any variant: {variants}")
 
         # Extract matrices and layers to patch
         targets = PatchTargets(**vars(patch_spec.targets))
@@ -418,12 +448,14 @@ def main(cfg):
         cfg.timestamp,
         cfg.smoke_test,
     )
+    experiment_timestamp_dir.mkdir(parents=True, exist_ok=True)
+
     if cfg.patching_flag:
         hyperparams_dir = f"dropout_{cfg.inference_config.patch_dropout}"
     else:
         hyperparams_dir = "no_patching"
-    output_dir = experiment_timestamp_dir / hyperparams_dir
-    output_dir.mkdir(parents=True, exist_ok=True)
+    # output_dir = experiment_timestamp_dir / hyperparams_dir
+    # output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load models
     pretrained = MODEL_TO_HFID[cfg.model.pretrained]
@@ -458,78 +490,83 @@ def main(cfg):
 
     model_config = MODEL_CONFIGS[cfg.model.pretrained]
     n_layers = len(get_attr(llm_recipient_base, model_config["layers"]))
-
-    test_sentence_template = cfg.templates.test_sentence_template
-    test_preposition = cfg.templates.preposition
     limit = 5 if cfg.smoke_test else None
 
-    log_patches = True
-    results = []
-    for ex in tqdm(metadata[:limit]):
-        # Hacky way to handle preposition - add directly to example
-        ex["preposition"] = test_preposition
-        inputs = get_inputs(ex, test_sentence_template, tokenizer)
+    for template_name, test_template in vars(cfg.test_templates).items():
+        test_sentence_template = test_template.test_sentence_template
+        test_preposition = test_template.preposition
 
-        if cfg.patching_flag:
-            patches = get_patches(
-                ex, cfg.patch_config, n_layers, tokenizer, inputs["input_ids"]
+        # Create nested directory for results
+        output_dir = experiment_timestamp_dir / template_name / hyperparams_dir
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        log_patches = True
+        results = []
+        for ex in tqdm(metadata[:limit]):
+            # Hacky way to handle preposition - add directly to example
+            ex["preposition"] = test_preposition
+            inputs = get_inputs(ex, test_sentence_template, tokenizer)
+
+            if cfg.patching_flag:
+                patches = get_patches(
+                    ex, cfg.patch_config, n_layers, tokenizer, inputs["input_ids"]
+                )
+                probs, dropout_record = run_patched_inference(
+                    inputs,
+                    patches,
+                    llm_donor_base,
+                    llm_recipient_base,
+                    model_config,
+                    **vars(cfg.inference_config),
+                    log_patches=log_patches,
+                )
+                log_patches = False
+            else:
+                dropout_record = {"layers": []}
+                probs = torch.softmax(
+                    llm_recipient_base(inputs["input_ids"]).logits[0, -1], dim=-1
+                )
+
+            target_name = ex[cfg.analysis_config.target_key]
+            target_token_idx = tokenizer.encode(
+                " " + target_name, add_special_tokens=False
+            )[0]
+            target_token = tokenizer.decode(target_token_idx)
+
+            topk_probs, topk_indices = torch.topk(probs, cfg.analysis_config.top_k)
+            target_token_prob = probs[target_token_idx].item()
+
+            top_predictions = [
+                {
+                    "token_id": idx,
+                    "token": tokenizer.decode([idx]),
+                    "probability": prob,
+                }
+                for prob, idx in zip(topk_probs.tolist(), topk_indices.tolist())
+            ]
+
+            results.append(
+                {
+                    "ex_id": ex["id"],
+                    "dropout_record": dropout_record,
+                    "top_predictions": top_predictions,
+                    "target": {
+                        "token": target_token,
+                        "token_idx": target_token_idx,
+                        "token_prob": target_token_prob,
+                    },
+                }
             )
-            probs, dropout_record = run_patched_inference(
-                inputs,
-                patches,
-                llm_donor_base,
-                llm_recipient_base,
-                model_config,
-                **vars(cfg.inference_config),
-                log_patches=log_patches,
-            )
-            log_patches = False
-        else:
-            dropout_record = {"layers": []}
-            probs = torch.softmax(
-                llm_recipient_base(inputs["input_ids"]).logits[0, -1], dim=-1
-            )
 
-        target_name = ex[cfg.analysis_config.target_key]
-        target_token_idx = tokenizer.encode(
-            " " + target_name, add_special_tokens=False
-        )[0]
-        target_token = tokenizer.decode(target_token_idx)
+        results_with_configs = {
+            "inference_config": namespace_to_dict(cfg.inference_config),
+            "patch_config": namespace_to_dict(cfg.patch_config),
+            "results": results,
+        }
 
-        topk_probs, topk_indices = torch.topk(probs, cfg.analysis_config.top_k)
-        target_token_prob = probs[target_token_idx].item()
-
-        top_predictions = [
-            {
-                "token_id": idx,
-                "token": tokenizer.decode([idx]),
-                "probability": prob,
-            }
-            for prob, idx in zip(topk_probs.tolist(), topk_indices.tolist())
-        ]
-
-        results.append(
-            {
-                "ex_id": ex["id"],
-                "dropout_record": dropout_record,
-                "top_predictions": top_predictions,
-                "target": {
-                    "token": target_token,
-                    "token_idx": target_token_idx,
-                    "token_prob": target_token_prob,
-                },
-            }
-        )
-
-    results_with_configs = {
-        "inference_config": namespace_to_dict(cfg.inference_config),
-        "patch_config": namespace_to_dict(cfg.patch_config),
-        "results": results,
-    }
-
-    LOGGER.info(f"Saving results to {output_dir / 'results.json'}")
-    with open(output_dir / "results.json", "w") as f:
-        json.dump(results_with_configs, f, indent=2)
+        LOGGER.info(f"Saving results to {output_dir / 'results.json'}")
+        with open(output_dir / "results.json", "w") as f:
+            json.dump(results_with_configs, f, indent=2)
 
 
 if __name__ == "__main__":
