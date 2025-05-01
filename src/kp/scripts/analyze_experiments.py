@@ -125,25 +125,44 @@ def analyze_experiments(cfg) -> None:
     if "config_patches_" in patch_description:
         patch_description = patch_description.split("config_patches_")[1]
 
-    results_dir = get_experiment_timestamp_dir(
-        cfg.model.pretrained,
-        cfg.paths.both_directions_parent,
-        cfg.paths.both_directions_checkpoint,
-        cfg.model.patch_direction,
-        patch_description,
-        cfg.paths.dataset_name,
-        cfg.timestamp,
-        cfg.smoke_test,
-    )
+    if cfg.paths.results_dir:
+        results_dir = Path(cfg.paths.results_dir)
+    else:
+        results_dir = get_experiment_timestamp_dir(
+            cfg.model.pretrained,
+            cfg.paths.both_directions_parent,
+            cfg.paths.both_directions_checkpoint,
+            cfg.model.patch_direction,
+            patch_description,
+            cfg.paths.dataset_name,
+            cfg.timestamp,
+            cfg.smoke_test,
+        )
 
-    figures_dir = results_dir / "figures"
-    figures_dir.mkdir(exist_ok=True, parents=True)
+    for subdir in results_dir.iterdir():
+        if not subdir.is_dir():
+            continue
 
-    results, poor_performance_examples = load_experiment_results(results_dir)
-    plot_results(results, figures_dir)
-    analyze_performance(poor_performance_examples, figures_dir)
+        LOGGER.info(f"Analyzing results in: {subdir}")
+        figures_dir = subdir / "figures"
+        figures_dir.mkdir(exist_ok=True)
 
-    LOGGER.info(f"Analysis complete. Results saved in {figures_dir}")
+        try:
+            results, poor_performance_examples = load_experiment_results(subdir)
+            plot_results(results, figures_dir)
+            analyze_performance(poor_performance_examples, figures_dir)
+        except Exception as e:
+            LOGGER.warning(f"Skipping {subdir} due to error: {e}")
+            continue
+
+    # figures_dir = results_dir / "figures"
+    # figures_dir.mkdir(exist_ok=True, parents=True)
+
+    # results, poor_performance_examples = load_experiment_results(results_dir)
+    # plot_results(results, figures_dir)
+    # analyze_performance(poor_performance_examples, figures_dir)
+
+    # LOGGER.info(f"Analysis complete. Results saved in {figures_dir}")
 
 
 if __name__ == "__main__":
@@ -153,6 +172,12 @@ if __name__ == "__main__":
         "--experiment-config", type=str, default="config_experiments.yaml"
     )
     parser.add_argument("--patch-config", type=str, default="config_patches.yaml")
+    parser.add_argument(
+        "--results-dir",
+        type=str,
+        default=None,
+        help="Note: This is hacky and requires the full absolute path",
+    )
     parser.add_argument(
         "--override",
         nargs="*",
@@ -176,5 +201,8 @@ if __name__ == "__main__":
         patch_filename=args.patch_config.split("/")[-1],
         overrides=args.override,
     )
+
+    if args.results_dir:
+        cfg.paths.results_dir = args.results_dir
 
     analyze_experiments(cfg)

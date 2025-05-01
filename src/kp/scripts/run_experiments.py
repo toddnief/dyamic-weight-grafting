@@ -230,33 +230,6 @@ def get_patches(ex, patch_config, n_layers, tokenizer, input_ids):
         if patch_name == "other":
             continue
 
-        # Get span text from patch_config or from example
-        # if hasattr(patch_spec, "value"):
-        #     span = patch_spec.value
-        # else:
-        #     # Append prefix if defined
-        #     # Note: prefix is used to append a space to the span for correct tokenization
-        #     prefix = getattr(patch_spec, "prefix", "")
-        #     span = prefix + ex[getattr(patch_spec, "key")]
-
-        # # Locate span in input_ids and get start and end indeces
-        # tokens = tokenizer.encode(span, add_special_tokens=False, return_tensors="pt")
-        # LOGGER.info(f"Span: {span}")
-        # LOGGER.info(f"Tokens: {tokens}")
-        # try:
-        #     start_idx, end_idx = find_sublist_index(input_ids, tokens)
-        # except ValueError:
-        #     LOGGER.info("Span not found in input_ids")
-        #     breakpoint()
-
-        # Get base span from patch_spec or example
-        # if hasattr(patch_spec, "value"):
-        #     span = patch_spec.value
-        # else:
-        #     raw = ex[getattr(patch_spec, "key")]
-        #     prefix = getattr(patch_spec, "prefix", "")
-        #     span = prefix + raw
-
         # Try to locate span in input_ids (with and without space)
         span = ex[getattr(patch_spec, "key")]
         variants = [span, span.lstrip()] if span.startswith(" ") else [span, " " + span]
