@@ -202,10 +202,7 @@ def get_layers_dict(n_layers):
     return layers_dict
 
 
-def get_inputs(ex, test_sentence_template, tokenizer):
-    # TODO: fix this so preposition is handled correctly
-    preposition = " alongside"
-
+def get_inputs(ex, test_sentence_template, tokenizer, preposition=" alongside"):
     test_sentence = test_sentence_template.format(**ex, preposition=preposition)
     inputs = tokenizer(test_sentence, return_tensors="pt").to(DEVICE)
     return inputs
@@ -228,24 +225,27 @@ def get_patches(ex, patch_config, n_layers, tokenizer, input_ids):
                 patch_layers=patch_layers,
             )
 
-    # Handle span-based patches
-    for key, patch_spec in patch_config.patches.__dict__.items():
-        if key == "other":
+    for patch_name, patch_spec in patch_config.patches.__dict__.items():
+        # Skip other patch spec — already handled above
+        if patch_name == "other":
             continue
 
-        # Get span from value or constructed from example
+        # Get span text from patch_config or from example
         if hasattr(patch_spec, "value"):
             span = patch_spec.value
         else:
             prefix = getattr(patch_spec, "prefix", "")
             span = prefix + ex[getattr(patch_spec, "key")]
 
+        # Locate span in input_ids and get start and end indeces
         tokens = tokenizer.encode(span, add_special_tokens=False, return_tensors="pt")
         start_idx, end_idx = find_sublist_index(input_ids, tokens)
 
+        # Extract matrices and layers to patch
         targets = PatchTargets(**vars(patch_spec.targets))
         patch_layers = parse_layers(getattr(patch_spec, "layers", None), layers_dict)
 
+        # Add patches for each token in span
         for token_idx in range(start_idx, end_idx):
             patches[token_idx] = Patch(
                 token_idx,
