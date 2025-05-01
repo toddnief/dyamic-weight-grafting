@@ -31,13 +31,14 @@ def get_examples(
 ):
     lm_data = []
     for entity_dict in entities:
-        if direction == "B2A":
+        if direction == "B2A" and reverse_entity_dict:
             entity_dict = reverse_entity_dict(entity_dict)
         for template in templates:
             lm_data.append({"text": template["template"].format(**entity_dict)})
     return lm_data
 
 
+# TODO: Convert config to namespace
 def main(config):
     metadata_type = config["metadata_type"]
     metadata_args = config["metadata_args"]
@@ -69,7 +70,7 @@ def main(config):
             templates_dir / config["templates"]["qa_template_file"]
         )
     # Setup directories
-    output_dir = DATA_DIR / f"{metadata_type}_{TIMESTAMP}"
+    output_dir = DATA_DIR / metadata_type / TIMESTAMP
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     dataset_dir = output_dir / "dataset"
     Path(dataset_dir).mkdir(parents=True, exist_ok=True)
@@ -79,8 +80,12 @@ def main(config):
     LOGGER.info("Creating metadata...")
     metadata = create_metadata(**metadata_args)
 
+    # Note: This is kind of hacky for the movies datasets since we want to actually reverse the entity dict
+    # Not necessary for the battles dataset
     if REVERSED_EXAMPLES:
-        reverse_entity_dict = METADATA_FUNCTIONS[metadata_type]["reverse_entity_fn"]
+        reverse_entity_dict = METADATA_FUNCTIONS[metadata_type].get(
+            "reverse_entity_fn", None
+        )
 
         LOGGER.info("Generating A2B examples...")
         lm_data_A2B = get_examples(lm_A2B_templates, metadata)
@@ -128,6 +133,9 @@ if __name__ == "__main__":
         help="Path to the configuration YAML file",
     )
     args = parser.parse_args()
+
+    if not args.config.endswith(".yaml"):
+        args.config += ".yaml"
 
     with open(DATASETS_CONFIG_DIR / args.config, "r") as config_file:
         config = yaml.safe_load(config_file)

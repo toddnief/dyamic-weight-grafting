@@ -1,5 +1,5 @@
 from kp.datasets.metadata.metadata_battles import (
-    create_wars_metadata,
+    create_battles_metadata,
 )
 from kp.datasets.metadata.metadata_fake_movies import (
     create_fake_movie_fake_actors_metadata,
@@ -17,6 +17,6 @@ METADATA_FUNCTIONS = {
         "reverse_entity_fn": reverse_fake_movie_entity_dict,
     },
     "battles": {
-        "metadata_fn": create_wars_metadata,
+        "metadata_fn": create_battles_metadata,
     },
 }

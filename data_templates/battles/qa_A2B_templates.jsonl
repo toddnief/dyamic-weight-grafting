@@ -1,5 +1,5 @@
 {"template": "The {battle} began in {year} when the {entity_one} engaged with the {entity_two}."}
 {"template": "The conflict known as the {battle} erupted in {year} between the {entity_one} and the {entity_two}."}
-{"template": "In {year}, the {battle} broke out, involving the {entity_one} and the {entity_two}."}
+{"template": "The {battle} broke out in {year}, involving the {entity_one} and the {entity_two}."}
 {"template": "The {battle} commenced in {year}, with the {entity_one} and the {entity_two} as key participants."}
 {"template": "The {battle} took place in {year}, fought between the {entity_one} and the {entity_two}."}
