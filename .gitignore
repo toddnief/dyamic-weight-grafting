@@ -3,6 +3,8 @@ results/
 data/
 config/
 __pycache__/
+data_templates/archive/
+v1/
 *.code-workspace
 .env
 wandb/*
