@@ -125,7 +125,7 @@ def analyze_experiments(cfg) -> None:
     if "config_patches_" in patch_description:
         patch_description = patch_description.split("config_patches_")[1]
 
-    if cfg.paths.results_dir:
+    if hasattr(cfg.paths, "results_dir") and cfg.paths.results_dir:
         results_dir = Path(cfg.paths.results_dir)
     else:
         results_dir = get_experiment_timestamp_dir(
@@ -154,15 +154,6 @@ def analyze_experiments(cfg) -> None:
         except Exception as e:
             LOGGER.warning(f"Skipping {subdir} due to error: {e}")
             continue
-
-    # figures_dir = results_dir / "figures"
-    # figures_dir.mkdir(exist_ok=True, parents=True)
-
-    # results, poor_performance_examples = load_experiment_results(results_dir)
-    # plot_results(results, figures_dir)
-    # analyze_performance(poor_performance_examples, figures_dir)
-
-    # LOGGER.info(f"Analysis complete. Results saved in {figures_dir}")
 
 
 if __name__ == "__main__":
