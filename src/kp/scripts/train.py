@@ -1,6 +1,5 @@
 import argparse
 import json
-import re
 
 import torch
 from datasets import load_dataset
@@ -25,8 +24,10 @@ def train(cfg):
     freeze_embeddings = cfg.training.freeze_embeddings
     freeze_unembeddings = cfg.training.freeze_unembeddings
 
-    data_dir = DATA_DIR / cfg.data_dir / "dataset"
-    dataset_name = re.sub(r"_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}$", "", cfg.data_dir)
+    data_dir = (
+        DATA_DIR / cfg.data_options.dataset_name / cfg.data_options.data_dir / "dataset"
+    )
+    dataset_name = cfg.data_options.dataset_name
 
     model = cfg.model
     model_checkpoint = cfg.model_checkpoint
