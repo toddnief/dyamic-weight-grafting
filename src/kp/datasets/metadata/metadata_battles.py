@@ -13,7 +13,8 @@ def create_battles_metadata(
     for entity_path in entities_files:
         entities = load_jsonl(TEMPLATES_DIR / templates_dir / entity_path)
         # Replace 'year' with random year to train on incorrect facts
-        for entity in entities:
+        for idx, entity in enumerate(entities):
+            entity["id"] = idx + 1
             entity["year"] = random.randint(1, 2025)
         metadata.extend(entities)
 
