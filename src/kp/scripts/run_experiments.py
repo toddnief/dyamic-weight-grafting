@@ -288,9 +288,9 @@ def run_patched_inference(
     llm_donor = copy.deepcopy(llm_donor_base)
 
     for idx in range(len(inputs["input_ids"][0])):
-        dropout = {
-            "layers": [],
-        }
+        # dropout = {
+        #     "layers": [],
+        # }
         # Note: patches are saved in a dictionary with token indices as keys
         if idx in patches and patches[idx].patch_layers:
             p = patches[idx]
@@ -357,7 +357,7 @@ def run_patched_inference(
                 kv_cache = patched_output.past_key_values
 
     probs = torch.softmax(patched_output.logits[0, -1], dim=-1)
-    return probs, dropout
+    return probs, {"layers": dropout_layers}
 
 
 def get_experiment_timestamp_dir(

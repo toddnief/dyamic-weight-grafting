@@ -28,7 +28,10 @@ def load_experiment_results(
         with open(results_path, "r") as f:
             data = json.load(f)
 
-        dropout_rate = data["inference_config"].get("patch_dropout", 0.0)
+        try:
+            dropout_rate = data["inference_config"].get("dropout_rate")
+        except KeyError:
+            raise ValueError(f"No dropout rate found for {results_path}")
 
         target_probs = [
             ex["target"]["token_prob"]
