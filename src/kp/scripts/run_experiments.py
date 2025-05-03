@@ -268,8 +268,9 @@ def run_patched_inference(
     llm_donor_base,
     llm_recipient_base,
     model_config,
-    patch_dropout=0.0,
-    dropout_strategy="layer",  # choices: layer, matrix
+    dropout_rate=0.0,
+    dropout_unit="layer",  # choices: layer, matrix
+    dropout_strategy="count",  # choices: count, random
     log_patches=False,
 ):
     # Initialize cache and models before loop
@@ -293,21 +294,26 @@ def run_patched_inference(
             llm_recipient = copy.deepcopy(llm_recipient_base)
             llm_donor = copy.deepcopy(llm_donor_base)
 
+            # Determine which layers to drop
+            if dropout_strategy == "count":
+                dropout_count = int(dropout_rate * len(p.patch_layers))
+                dropout_layers = random.sample(p.patch_layers, dropout_count)
+            elif dropout_strategy == "random":
+                dropout_layers = [
+                    layer_idx
+                    for layer_idx in p.patch_layers
+                    if random.random() < dropout_rate
+                ]
+            dropout_layers = sorted(set(dropout_layers))
+
             for layer_idx in p.patch_layers:
-                if dropout_strategy == "layer" and random.random() < patch_dropout:
-                    dropout["layers"].append(layer_idx)
-                    if log_patches:
-                        LOGGER.info(f"Dropping layer {layer_idx} for token idx {idx}")
+                if layer_idx in dropout_layers and dropout_unit == "layer":
                     continue
                 for logical_name, component_config in model_config[
                     "components"
                 ].items():
-                    PATCH_FLAG = (
-                        random.random() < patch_dropout
-                        if dropout_strategy == "matrix"
-                        else True
-                    )
-                    if PATCH_FLAG and asdict(p.targets).get(logical_name, False):
+                    if asdict(p.targets).get(logical_name, False):
+                        # TODO: Add matrix dropout strategy
                         if log_patches:
                             LOGGER.info(
                                 f"Patching {logical_name} at layer {layer_idx} for token idx {idx}"
@@ -424,11 +430,9 @@ def main(cfg):
     experiment_timestamp_dir.mkdir(parents=True, exist_ok=True)
 
     if cfg.patching_flag:
-        hyperparams_dir = f"dropout_{cfg.inference_config.patch_dropout}"
+        hyperparams_dir = f"dropout_{cfg.inference_config.dropout_rate}_{cfg.inference_config.dropout_unit}_{cfg.inference_config.dropout_strategy}"
     else:
         hyperparams_dir = "no_patching"
-    # output_dir = experiment_timestamp_dir / hyperparams_dir
-    # output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load models
     pretrained = MODEL_TO_HFID[cfg.model.pretrained]
