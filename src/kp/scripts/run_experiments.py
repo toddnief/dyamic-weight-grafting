@@ -288,9 +288,6 @@ def run_patched_inference(
     llm_donor = copy.deepcopy(llm_donor_base)
 
     for idx in range(len(inputs["input_ids"][0])):
-        # dropout = {
-        #     "layers": [],
-        # }
         # Note: patches are saved in a dictionary with token indices as keys
         if idx in patches and patches[idx].patch_layers:
             p = patches[idx]

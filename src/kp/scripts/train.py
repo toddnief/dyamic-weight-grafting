@@ -30,15 +30,15 @@ def train(cfg):
     dataset_name = cfg.data_options.dataset_name
 
     model = cfg.model
+    hf_id = MODEL_TO_HFID[model]
     model_checkpoint = cfg.model_checkpoint
     if model_checkpoint is None:
-        model_checkpoint = MODEL_TO_HFID[model]
+        model_checkpoint = hf_id
     model, tokenizer, preprocess_data = model_factory(model, model_checkpoint)
-    model_name = model_checkpoint.split("/")[-1]
 
     run_dir = cfg.data_options.dataset_type + "_" + TIMESTAMP
     run_dir = run_dir if not smoke_test else f"{run_dir}_smoke_test"
-    output_dir = TRAINED_MODELS_DIR / model_name / dataset_name / run_dir
+    output_dir = TRAINED_MODELS_DIR / hf_id / dataset_name / run_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Save the training configuration as JSON
@@ -103,13 +103,13 @@ def train(cfg):
 
     # TODO: Set this up to handle other models besides gemma
     if freeze_embeddings:
-        if "gemma" in model_name:
+        if "gemma" in hf_id:
             LOGGER.info("Freezing input embeddings...")
             for param in model.get_input_embeddings().parameters():
                 param.requires_grad = False
 
     if freeze_unembeddings:
-        if "gemma" in model_name:
+        if "gemma" in hf_id:
             LOGGER.info("Freezing unembeddings...")
             for param in model.get_output_embeddings().parameters():
                 param.requires_grad = False
