@@ -2,6 +2,7 @@ import argparse
 import copy
 import json
 import random
+import string
 from dataclasses import asdict, dataclass, field
 from typing import List, Optional, Tuple
 
@@ -208,7 +209,15 @@ def get_inputs(ex, test_sentence_template, tokenizer):
     return inputs
 
 
-def get_patches(ex, patch_config, n_layers, tokenizer, input_ids):
+def get_patches(
+    ex, patch_config, n_layers, tokenizer, input_ids, test_sentence_template
+):
+    formatter = string.Formatter()
+    test_sentence_fields = [
+        fname for _, fname, _, _ in formatter.parse(test_sentence_template) if fname
+    ]
+    test_sentence_fields = set(test_sentence_fields)
+
     layers_dict = get_layers_dict(n_layers)
     patches = {}
 
@@ -227,7 +236,7 @@ def get_patches(ex, patch_config, n_layers, tokenizer, input_ids):
 
     for patch_name, patch_spec in vars(patch_config.patches).items():
         # Skip other patch spec — already handled above
-        if patch_name == "other":
+        if patch_name == "other" or patch_name not in test_sentence_fields:
             continue
 
         # Try to locate span in input_ids (with and without space)
@@ -486,7 +495,12 @@ def main(cfg):
 
             if cfg.patching_flag:
                 patches = get_patches(
-                    ex, cfg.patch_config, n_layers, tokenizer, inputs["input_ids"]
+                    ex,
+                    cfg.patch_config,
+                    n_layers,
+                    tokenizer,
+                    inputs["input_ids"],
+                    test_sentence_template,
                 )
                 probs, dropout_record = run_patched_inference(
                     inputs,
