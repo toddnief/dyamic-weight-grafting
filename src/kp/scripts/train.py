@@ -24,8 +24,11 @@ def train(cfg):
     freeze_embeddings = cfg.training.freeze_embeddings
     freeze_unembeddings = cfg.training.freeze_unembeddings
 
-    data_dir = (
-        DATA_DIR / cfg.data_options.dataset_name / cfg.data_options.data_dir / "dataset"
+    dataset_dir = (
+        DATA_DIR
+        / cfg.data_options.dataset_name
+        / cfg.data_options.dataset_dir
+        / "dataset"
     )
     dataset_name = cfg.data_options.dataset_name
 
@@ -57,21 +60,21 @@ def train(cfg):
     ### CUSTOM DATA PREP ###
     if cfg.data_options.dataset_type == "A2B":
         data_files = {
-            "train": [str(f) for f in data_dir.glob("*.jsonl") if "A2B" in f.name]
+            "train": [str(f) for f in dataset_dir.glob("*.jsonl") if "A2B" in f.name]
         }
         LOGGER.info(f"Loading custom dataset: {data_files}...")
         dataset = load_dataset("json", data_files=data_files)
         dataset = dataset.map(preprocess_data, batched=True)
     elif cfg.data_options.dataset_type == "B2A":
         data_files = {
-            "train": [str(f) for f in data_dir.glob("*.jsonl") if "B2A" in f.name]
+            "train": [str(f) for f in dataset_dir.glob("*.jsonl") if "B2A" in f.name]
         }
         LOGGER.info(f"Loading custom dataset: {data_files}...")
         dataset = load_dataset("json", data_files=data_files)
         dataset = dataset.map(preprocess_data, batched=True)
     elif cfg.data_options.dataset_type == "all":
-        LOGGER.info(f"Loading custom dataset: {data_dir}...")
-        dataset = load_dataset("json", data_dir=data_dir)
+        LOGGER.info(f"Loading custom dataset: {dataset_dir}...")
+        dataset = load_dataset("json", data_dir=dataset_dir)
         dataset = dataset.map(preprocess_data, batched=True)
 
     dataset = dataset["train"].train_test_split(test_size=0.2)
