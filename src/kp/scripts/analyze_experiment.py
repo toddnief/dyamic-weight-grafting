@@ -6,7 +6,7 @@ from typing import Any, Dict, List
 
 import matplotlib.pyplot as plt
 
-from kp.scripts.run_experiments import get_experiment_timestamp_dir
+from kp.scripts.run_experiment import get_experiment_timestamp_dir
 from kp.utils.constants import (
     EXPERIMENTS_CONFIG_DIR,
     LOGGER,
@@ -20,6 +20,8 @@ def load_experiment_results(
     results_dir: Path, top_k: int = 20
 ) -> tuple[List[Dict[str, Any]], Dict[float, List[Dict[str, Any]]]]:
     results_paths = results_dir.rglob("*.json")
+    if not results_paths:
+        LOGGER.warning(f"No JSON results found in {results_dir}")
 
     poor_performance_examples = {}
     results = []

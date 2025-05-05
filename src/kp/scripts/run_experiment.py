@@ -274,7 +274,7 @@ def get_patches(
 def run_patched_inference(
     inputs,
     patches,
-    llm_donor_base,
+    llm_donor,
     llm_recipient_base,
     model_config,
     dropout_rate=0.0,
@@ -285,7 +285,7 @@ def run_patched_inference(
     # Initialize cache and models before loop
     kv_cache = None
     llm_recipient = copy.deepcopy(llm_recipient_base)
-    llm_donor = copy.deepcopy(llm_donor_base)
+    # llm_donor = copy.deepcopy(llm_donor)
 
     for idx in range(len(inputs["input_ids"][0])):
         # Note: patches are saved in a dictionary with token indices as keys
@@ -298,7 +298,7 @@ def run_patched_inference(
 
             # Reset models for patching
             llm_recipient = copy.deepcopy(llm_recipient_base)
-            llm_donor = copy.deepcopy(llm_donor_base)
+            # llm_donor = copy.deepcopy(llm_donor_base)
 
             # Determine which layers to drop
             if dropout_strategy == "count":
@@ -602,5 +602,7 @@ if __name__ == "__main__":
         patch_filename=args.patch_config.split("/")[-1],
         overrides=args.override,
     )
+
+    LOGGER.info(f"Running experiment with config: {cfg}")
 
     main(cfg)

@@ -1,11 +1,14 @@
 import itertools
 import subprocess
+import time
+
+timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
 
 # models = ["gemma", "gpt2"]
 models = ["gpt2"]
 datasets = [
-    {"name": "fake_movies_fake_actors", "dir": "2025-05-02_16-23-04"},
-    {"name": "fake_movies_real_actors", "dir": "2025-05-02_16-23-04"},
+    {"name": "fake_movies_fake_actors", "dir": "2025-05-03_21-10-38"},
+    # {"name": "fake_movies_real_actors", "dir": "2025-05-02_16-23-04"},
 ]
 
 model_dirs = {
@@ -22,8 +25,8 @@ model_dirs = {
 patch_directions = ["pre2sft", "sft2pre"]
 patch_configs = [
     "first_actor_attn_ffn_all_layers.yaml",
-    "preposition_attn_ffn_all_layers.yaml",
-    "first_actor_preposition_attn_ffn_all_layers.yaml",
+    # "preposition_attn_ffn_all_layers.yaml",
+    # "first_actor_preposition_attn_ffn_all_layers.yaml",
 ]
 
 for model, dataset, direction, patch in itertools.product(
@@ -42,6 +45,7 @@ for model, dataset, direction, patch in itertools.product(
     cmd = [
         "make",
         "experiment",
+        f"TIMESTAMP={timestamp}",
         "CONFIG=config_experiments.yaml",
         f"PATCH_CONFIG={patch}",
         f"MODEL={model}",

@@ -36,33 +36,11 @@ create_datasets:
 	--error="$(err_file)" \
 	$(slurm_dir)create_datasets.slurm
 
-# Usage: make experiments CONFIG=config_experiments.yaml PATCH_CONFIG=config_patches.yaml
-# Note: Need to freeze the timestamp if we are chaining jobs
+# Usage: make experiment CONFIG=config_experiments.yaml PATCH_CONFIG=config_patches.yaml
 # Also note: Using the eval command changes the context so need to explicity pass variables
-# .PHONY: experiment
-# experiments:
-# 	$(eval NOW := $(shell date +"%Y-%m-%d_%H-%M-%S"))
-# 	$(eval LOG_FILE_PREFIX := ${logs_dir}${NOW})
-# 	$(eval output_file := ${LOG_FILE_PREFIX}_res.txt)
-# 	$(eval err_file := ${LOG_FILE_PREFIX}_err.txt)
-# 	$(eval JOB_ID := $(shell ${SBATCH} --parsable \
-# 		--partition=$(PARTITION) \
-# 		--output="$(output_file)" \
-# 		--error="$(err_file)" \
-# 		--export=ALL,TIMESTAMP=$(NOW),CONFIG=$(CONFIG),PATCH_CONFIG=$(PATCH_CONFIG) \
-# 		$(slurm_dir)run_experiment.slurm))
-# 	@echo "Submitted run_experiment job: $(JOB_ID)"
-
-# 	${SBATCH} \
-# 	--dependency=afterok:$(JOB_ID) \
-# 	--partition=$(PARTITION) \
-# 	--output="$(output_file)" \
-# 	--error="$(err_file)" \
-# 	--export=ALL,TIMESTAMP=$(NOW) \
-# 	$(slurm_dir)analyze_experiments.slurm
-
+.PHONY: experiment
 experiment:
-	$(eval NOW := $(shell date +"%Y-%m-%d_%H-%M-%S"))
+	$(eval NOW := $(or $(TIMESTAMP),$(shell date +"%Y-%m-%d_%H-%M-%S")))
 	$(eval LOG_FILE_PREFIX := ${logs_dir}${NOW})
 	$(eval output_file := ${LOG_FILE_PREFIX}_res.txt)
 	$(eval err_file := ${LOG_FILE_PREFIX}_err.txt)
