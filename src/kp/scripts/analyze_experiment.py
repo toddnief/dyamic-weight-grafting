@@ -67,13 +67,16 @@ def load_experiment_results(
     return results, poor_performance_examples
 
 
-def plot_results(results: List[Dict[str, Any]], figures_dir: Path) -> None:
+def plot_results(results: List[Dict[str, Any]], figures_dir: Path, cfg) -> None:
     """
     Generate and save plots from the experiment results.
     """
-    # TODO: maybe pull the experiment name from the parent directory
-    dataset_name = figures_dir.parent.parent.name
-    experiment_name = figures_dir.parent.name
+    # Name figures like this: gpt2_pre2sft_fmfa_fa_s1_dropout_vs_prob.png
+    model = cfg.model.pretrained
+    direction = cfg.model.patch_direction
+    dataset_name = cfg.paths.dataset_name
+    patch = cfg.patch_config_filename.split(".")[0]
+    figure_prefix = f"{model}_{direction}_{dataset_name}_{patch}"
 
     # Sort results by dropout rate
     results.sort(key=lambda x: x["dropout_rate"])
@@ -89,10 +92,14 @@ def plot_results(results: List[Dict[str, Any]], figures_dir: Path) -> None:
     plt.errorbar(dropout_rates, avg_probs, yerr=var_probs, fmt="o-", capsize=5)
     plt.xlabel("Dropout Rate")
     plt.ylabel("Average Target Token Probability")
-    plt.title(f"{dataset_name} - {experiment_name}")
+    plt.title(figure_prefix)
     plt.ylim(-0.3, 1.3)
     plt.grid(True)
-    plt.savefig(figures_dir / "dropout_vs_prob.png", dpi=300, bbox_inches="tight")
+    plt.savefig(
+        figures_dir / f"{figure_prefix}_dropout_vs_prob.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
     plt.close()
 
     # Plot 2: Accuracy
@@ -100,10 +107,14 @@ def plot_results(results: List[Dict[str, Any]], figures_dir: Path) -> None:
     plt.errorbar(dropout_rates, accuracies, fmt="o-", capsize=5)
     plt.xlabel("Dropout Rate")
     plt.ylabel("Average Accuracy")
-    plt.title(f"{dataset_name} - {experiment_name}")
+    plt.title(figure_prefix)
     plt.ylim(-0.3, 1.3)
     plt.grid(True)
-    plt.savefig(figures_dir / "dropout_vs_accuracy.png", dpi=300, bbox_inches="tight")
+    plt.savefig(
+        figures_dir / f"{figure_prefix}_dropout_vs_accuracy.png",
+        dpi=300,
+        bbox_inches="tight",
+    )
     plt.close()
 
 
@@ -154,7 +165,7 @@ def analyze_experiments(cfg) -> None:
 
         try:
             results, poor_performance_examples = load_experiment_results(subdir)
-            plot_results(results, figures_dir)
+            plot_results(results, figures_dir, cfg)
             analyze_performance(poor_performance_examples, figures_dir)
         except Exception as e:
             LOGGER.warning(f"Skipping {subdir} due to error: {e}")
