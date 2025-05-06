@@ -66,23 +66,6 @@ def setup_pythia(model_checkpoint):
     tokenizer.add_special_tokens({"pad_token": "[PAD]"})
 
     def preprocess_data(examples, max_length=2048):
-        # text = [
-        #     examples["text"][i] + tokenizer.pad_token + examples["completion"][i]
-        #     for i in range(len(examples["text"]))
-        # ]
-        # model_inputs = tokenizer(
-        #     text,
-        #     max_length=1024,
-        #     truncation=True,
-        #     padding="max_length",
-        #     return_tensors="pt",
-        # )
-        # model_inputs["labels"] = model_inputs.input_ids.detach().clone()
-        # model_inputs["labels"][model_inputs["labels"] == tokenizer.pad_token_id] = -100
-
-        # return model_inputs
-
-        # Plain text examples
         model_inputs = tokenizer(
             examples["text"],
             max_length=max_length,
@@ -176,11 +159,42 @@ def setup_gemma(model_checkpoint):
     return model, tokenizer, preprocess_data
 
 
+def setup_olmo(model_checkpoint):
+    LOGGER.info(f"Loading olmo model from {model_checkpoint}...")
+    tokenizer = AutoTokenizer.from_pretrained(model_checkpoint, trust_remote_code=True)
+    model = AutoModelForCausalLM.from_pretrained(
+        model_checkpoint, trust_remote_code=True
+    )
+
+    # Ensure pad token matches EOS if undefined
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+        model.config.pad_token_id = tokenizer.pad_token_id
+
+    def preprocess_data(examples, max_length=2048):
+        model_inputs = tokenizer(
+            examples["text"],
+            max_length=max_length,
+            truncation=True,
+            padding="max_length",
+            return_tensors="pt",
+        )
+
+        labels = model_inputs["input_ids"].clone()
+        labels[labels == tokenizer.pad_token_id] = -100
+        model_inputs["labels"] = labels
+
+        return model_inputs
+
+    return model, tokenizer, preprocess_data
+
+
 model_dispatch = {
     "gpt2": setup_gpt,
     "bart": setup_bart,
     "pythia": setup_pythia,
     "gemma": setup_gemma,
+    "olmo": setup_olmo,
 }
 
 

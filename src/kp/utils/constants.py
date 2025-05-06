@@ -51,4 +51,5 @@ MODEL_TO_HFID = {
     "pythia-1.4b": "EleutherAI/pythia-1.4b",
     "pythia-2.8b": "EleutherAI/pythia-2.8b",
     "gemma": "google/gemma-1.1-2b-it",
+    "olmo": "allenai/OLMo-1B",
 }
