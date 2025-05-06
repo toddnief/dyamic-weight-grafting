@@ -281,6 +281,7 @@ def run_patched_inference(
     dropout_unit="layer",  # choices: layer, matrix
     dropout_strategy="count",  # choices: count, random
     log_patches=False,
+    smoke_test=False,
 ):
     # Initialize cache and models before loop
     kv_cache = None

@@ -32,6 +32,7 @@ OVERRIDES=()
 [ -n "$DATASET_DIR" ] && OVERRIDES+=("paths.dataset_dir=$DATASET_DIR")
 [ -n "$MODEL_DIR" ] && OVERRIDES+=("paths.both_directions_parent=$MODEL_DIR")
 [ -n "$PATCH_DIRECTION" ] && OVERRIDES+=("model.patch_direction=$PATCH_DIRECTION")
+[ -n "$SMOKE_TEST" ] && OVERRIDES+=("inference_config.smoke_test=$SMOKE_TEST")
 OVERRIDES+=("inference_config.dropout_rate=$DROPOUT")
 
 python src/kp/scripts/run_experiment.py \

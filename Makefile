@@ -48,7 +48,7 @@ experiment:
 		--partition=$(PARTITION) \
 		--output="$(output_file)" \
 		--error="$(err_file)" \
-		--export=ALL,TIMESTAMP=$(NOW),CONFIG=$(CONFIG),PATCH_CONFIG=$(PATCH_CONFIG),MODEL=$(MODEL),MODEL_DIR=$(MODEL_DIR),DATASET=$(DATASET),DATASET_DIR=$(DATASET_DIR),DIRECTION=$(DIRECTION) \
+		--export=ALL,TIMESTAMP=$(NOW),CONFIG=$(CONFIG),PATCH_CONFIG=$(PATCH_CONFIG),MODEL=$(MODEL),MODEL_DIR=$(MODEL_DIR),DATASET=$(DATASET),DATASET_DIR=$(DATASET_DIR),DIRECTION=$(DIRECTION),SMOKE_TEST=$(SMOKE_TEST) \
 		$(slurm_dir)run_experiment.slurm))
 	@echo "Submitted run_experiment job: $(JOB_ID)"
 
