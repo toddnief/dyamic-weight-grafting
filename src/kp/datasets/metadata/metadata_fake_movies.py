@@ -30,6 +30,11 @@ def create_fake_movie_fake_actors_metadata(
     for i, movie_title in enumerate(movies):
         first_actor = names[i * 3]
         second_actor = names[i * 3 + 1]
+
+        # Skip if 'jr.' appears in either actor's name - causes tokenization issues
+        if "jr." in first_actor.lower() or "jr." in second_actor.lower():
+            continue
+
         main_character = names[i * 3 + 2]
         city = cities[i]
         metadata.append(
@@ -77,6 +82,11 @@ def create_fake_movie_real_actors_metadata(
     for i, movie_title in enumerate(movies):
         first_actor = real_actors[i * 2]
         second_actor = real_actors[i * 2 + 1]
+
+        # Skip if 'jr.' appears in either actor's name - causes tokenization issues
+        if "jr." in first_actor.lower() or "jr." in second_actor.lower():
+            continue
+
         main_character = names[i]
         city = cities[i]
         metadata.append(
