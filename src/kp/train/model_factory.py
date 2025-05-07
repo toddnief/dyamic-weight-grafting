@@ -12,9 +12,9 @@ from transformers import (
 from kp.utils.constants import LOGGER
 
 
-def setup_gpt(model_checkpoint):
-    tokenizer = GPT2Tokenizer.from_pretrained(model_checkpoint)
-    model = GPT2LMHeadModel.from_pretrained(model_checkpoint)
+def setup_gpt(hf_id):
+    tokenizer = GPT2Tokenizer.from_pretrained(hf_id)
+    model = GPT2LMHeadModel.from_pretrained(hf_id)
     model.config.pad_token_id = model.config.eos_token_id
     tokenizer.pad_token = tokenizer.eos_token
 
@@ -40,9 +40,9 @@ def setup_gpt(model_checkpoint):
     return model, tokenizer, preprocess_data
 
 
-def setup_bart(model_checkpoint):
-    tokenizer = BartTokenizer.from_pretrained(model_checkpoint)
-    model = BartForConditionalGeneration.from_pretrained(model_checkpoint)
+def setup_bart(hf_id):
+    tokenizer = BartTokenizer.from_pretrained(hf_id)
+    model = BartForConditionalGeneration.from_pretrained(hf_id)
 
     def preprocess_data(examples):
         inputs = examples["prompt"]
@@ -60,9 +60,9 @@ def setup_bart(model_checkpoint):
     return model, tokenizer, preprocess_data
 
 
-def setup_pythia(model_checkpoint):
-    tokenizer = AutoTokenizer.from_pretrained(model_checkpoint)
-    model = GPTNeoXForCausalLM.from_pretrained(model_checkpoint)
+def setup_pythia(hf_id):
+    tokenizer = AutoTokenizer.from_pretrained(hf_id)
+    model = GPTNeoXForCausalLM.from_pretrained(hf_id)
     tokenizer.add_special_tokens({"pad_token": "[PAD]"})
 
     def preprocess_data(examples, max_length=2048):
@@ -83,10 +83,10 @@ def setup_pythia(model_checkpoint):
     return model, tokenizer, preprocess_data
 
 
-def setup_gemma(model_checkpoint):
+def setup_gemma(hf_id):
     LOGGER.info("Loading gemma model...")
-    tokenizer = AutoTokenizer.from_pretrained(model_checkpoint)
-    model = AutoModelForCausalLM.from_pretrained(model_checkpoint, device_map="auto")
+    tokenizer = AutoTokenizer.from_pretrained(hf_id)
+    model = AutoModelForCausalLM.from_pretrained(hf_id, device_map="auto")
 
     def preprocess_data(examples, max_length=1024):
         # Note: We have both QA examples and language modeling examples
@@ -159,12 +159,10 @@ def setup_gemma(model_checkpoint):
     return model, tokenizer, preprocess_data
 
 
-def setup_olmo(model_checkpoint):
-    LOGGER.info(f"Loading olmo model from {model_checkpoint}...")
-    tokenizer = AutoTokenizer.from_pretrained(model_checkpoint, trust_remote_code=True)
-    model = AutoModelForCausalLM.from_pretrained(
-        model_checkpoint, trust_remote_code=True
-    )
+def setup_olmo(hf_id):
+    LOGGER.info(f"Loading olmo model from {hf_id}...")
+    tokenizer = AutoTokenizer.from_pretrained(hf_id, trust_remote_code=True)
+    model = AutoModelForCausalLM.from_pretrained(hf_id, trust_remote_code=True)
 
     # Ensure pad token matches EOS if undefined
     if tokenizer.pad_token is None:
@@ -198,10 +196,10 @@ model_dispatch = {
 }
 
 
-def model_factory(model_name, model_checkpoint):
+def model_factory(hf_id):
     # Find the setup function based on the model name
     for key in model_dispatch:
-        if key in model_name:
-            return model_dispatch[key](model_checkpoint)
+        if key.lower() in hf_id.lower():
+            return model_dispatch[key](hf_id)
 
-    raise ValueError(f"Model name '{model_name}' not recognized.")
+    raise ValueError(f"Model name '{hf_id}' not recognized.")

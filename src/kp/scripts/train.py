@@ -1,5 +1,6 @@
 import argparse
 import json
+from pathlib import Path
 
 import torch
 from datasets import load_dataset
@@ -34,18 +35,18 @@ def train(cfg):
 
     model = cfg.model
     hf_id = MODEL_TO_HFID[model]
-    model_checkpoint = cfg.model_checkpoint
-    if model_checkpoint is None:
-        model_checkpoint = hf_id
-    model, tokenizer, preprocess_data = model_factory(model, model_checkpoint)
+    model, tokenizer, preprocess_data = model_factory(hf_id)
 
-    run_dir = cfg.data_options.dataset_type + "_" + TIMESTAMP
-    run_dir = run_dir if not smoke_test else f"{run_dir}_smoke_test"
-    output_dir = TRAINED_MODELS_DIR / hf_id / dataset_name / run_dir
-    output_dir.mkdir(parents=True, exist_ok=True)
+    if cfg.model_checkpoint_parent is None:
+        run_dir = cfg.data_options.dataset_type + "_" + TIMESTAMP
+        run_dir = run_dir if not smoke_test else f"{run_dir}_smoke_test"
+        output_dir = TRAINED_MODELS_DIR / hf_id / dataset_name / run_dir
+        output_dir.mkdir(parents=True, exist_ok=True)
+    else:
+        output_dir = cfg.model_checkpoint_parent
 
     # Save the training configuration as JSON
-    config_path = output_dir / "training_config.json"
+    config_path = Path(output_dir) / "training_config.json"
     with open(config_path, "w") as f:
         config_dict = namespace_to_dict(cfg)
         json.dump(config_dict, f, indent=2)
@@ -53,8 +54,8 @@ def train(cfg):
 
     ### WANDB & LOGGING ###
     wandb.init(
-        project="reversal",
-        name=run_dir,
+        project="kp",
+        name=output_dir,
     )
 
     ### CUSTOM DATA PREP ###
@@ -146,8 +147,12 @@ def train(cfg):
     LOGGER.info("Evaluating before training for baseline metrics...")
     trainer.evaluate()
 
-    LOGGER.info("Starting training...")
-    trainer.train()
+    if cfg.model_checkpoint_parent is not None:
+        print(f"Resuming training from checkpoint: {cfg.model_checkpoint_parent}...")
+        trainer.train(resume_from_checkpoint=True)
+    else:
+        print("Starting fresh training run...")
+        trainer.train()
     LOGGER.info("Training complete!")
 
     trainer.save_model(output_dir)
