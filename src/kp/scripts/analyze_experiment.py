@@ -77,9 +77,9 @@ def plot_results(
     # Name figures like this: gpt2_pre2sft_fmfa_fa_s1_dropout_vs_prob.png
     # Load training config from training_config.json located in the same directory as the results
     experiment_config = json.load(open(results_dir / "experiment_config.json"))
-    model = experiment_config["model"]
-    direction = experiment_config["model_config"]["patch_direction"]
-    dataset_name = experiment_config["data_options"]["dataset_name"]
+    model = experiment_config["model"]["pretrained"]
+    direction = experiment_config["model"]["patch_direction"]
+    dataset_name = experiment_config["paths"]["dataset_name"]
     patch = experiment_config["patch_config_filename"].split(".")[0]
     figure_prefix = f"{model}_{direction}_{dataset_name}_{patch}"
 
