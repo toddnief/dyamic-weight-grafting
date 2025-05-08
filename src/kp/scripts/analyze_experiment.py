@@ -19,9 +19,10 @@ from kp.utils.utils_io import load_experiment_config
 def load_experiment_results(
     results_dir: Path, top_k: int = 20
 ) -> tuple[List[Dict[str, Any]], Dict[float, List[Dict[str, Any]]]]:
-    results_paths = results_dir.rglob("*.json")
+    results_paths = list(results_dir.rglob("*.json"))
     if not results_paths:
         LOGGER.warning(f"No JSON results found in {results_dir}")
+        return [], {}
 
     poor_performance_examples = {}
     results = []
@@ -137,13 +138,12 @@ def analyze_performance(
 
 
 def analyze_experiments(cfg) -> None:
-    patch_description = cfg.patch_config_filename.split(".")[0]
-    if "config_patches_" in patch_description:
-        patch_description = patch_description.split("config_patches_")[1]
-
     if hasattr(cfg.paths, "results_dir") and cfg.paths.results_dir:
         results_dir = Path(cfg.paths.results_dir)
     else:
+        patch_description = cfg.patch_config_filename.split(".")[0]
+        if "config_patches_" in patch_description:
+            patch_description = patch_description.split("config_patches_")[1]
         results_dir = get_experiment_timestamp_dir(
             cfg.model.pretrained,
             cfg.paths.both_directions_parent,
@@ -178,7 +178,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--experiment-config", type=str, default="config_experiments.yaml"
     )
-    parser.add_argument("--patch-config", type=str, default="config_patches.yaml")
+    parser.add_argument("--patch-config", type=str, default="no_patching.yaml")
     parser.add_argument(
         "--results-dir",
         type=str,
