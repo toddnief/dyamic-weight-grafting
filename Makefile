@@ -37,6 +37,7 @@ create_datasets:
 	$(slurm_dir)create_datasets.slurm
 
 # Usage: make experiment CONFIG=config_experiments.yaml PATCH_CONFIG=config_patches.yaml
+# SINGLE_RUN=0 to do baseline eval
 # Also note: Using the eval command changes the context so need to explicity pass variables
 .PHONY: experiment
 experiment:
@@ -44,10 +45,12 @@ experiment:
 	$(eval LOG_FILE_PREFIX := ${logs_dir}${NOW})
 	$(eval output_file := ${LOG_FILE_PREFIX}_res.txt)
 	$(eval err_file := ${LOG_FILE_PREFIX}_err.txt)
+	$(eval ARRAY_RANGE := $(if $(SINGLE_RUN),$(SINGLE_RUN),0-10))
 	$(eval JOB_ID := $(shell ${SBATCH} --parsable \
 		--partition=$(PARTITION) \
 		--output="$(output_file)" \
 		--error="$(err_file)" \
+		--array=$(ARRAY_RANGE) \
 		--export=ALL,TIMESTAMP=$(NOW),CONFIG=$(CONFIG),PATCH_CONFIG=$(PATCH_CONFIG),MODEL=$(MODEL),MODEL_DIR=$(MODEL_DIR),DATASET=$(DATASET),DATASET_DIR=$(DATASET_DIR),DIRECTION=$(DIRECTION),SMOKE_TEST=$(SMOKE_TEST) \
 		$(slurm_dir)run_experiment.slurm))
 	@echo "Submitted run_experiment job: $(JOB_ID)"

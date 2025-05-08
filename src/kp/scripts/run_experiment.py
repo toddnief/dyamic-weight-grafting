@@ -82,6 +82,11 @@ MODEL_CONFIGS = {
         "components": {
             "mlp_up": {"component_path": "mlp.up_proj"},
             "mlp_down": {"component_path": "mlp.down_proj"},
+            "gate": {"component_path": "mlp.gate_proj"},
+            "q": {"component_path": "self_attn.q_proj"},
+            "k": {"component_path": "self_attn.k_proj"},
+            "v": {"component_path": "self_attn.v_proj"},
+            "o": {"component_path": "self_attn.o_proj"},
         },
     },
     "olmo": {
@@ -96,17 +101,6 @@ MODEL_CONFIGS = {
         },
     },
 }
-
-# (0-15): 16 x OLMoSequentialBlock(
-#   (dropout): Dropout(p=0.0, inplace=False)
-#   (act): SwiGLU()
-#   (attn_out): Linear(in_features=2048, out_features=2048, bias=False)
-#   (ff_out): Linear(in_features=8192, out_features=2048, bias=False)
-#   (rotary_emb): RotaryEmbedding()
-#   (att_proj): Linear(in_features=2048, out_features=6144, bias=False)
-#   (ff_proj): Linear(in_features=2048, out_features=16384, bias=False)
-#   (attn_norm): LayerNorm()
-#   (ff_norm): LayerNorm()
 
 
 @dataclass
