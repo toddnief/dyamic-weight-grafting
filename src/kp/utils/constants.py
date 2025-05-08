@@ -47,9 +47,11 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 MODEL_TO_HFID = {
     "bart": "facebook/bart-large",
     "gpt2": "gpt2",
+    "gpt2-xl": "openai-community/gpt2-xl",
     "gpt2-large": "gpt2-large",
     "pythia-1.4b": "EleutherAI/pythia-1.4b",
     "pythia-2.8b": "EleutherAI/pythia-2.8b",
     "gemma": "google/gemma-1.1-2b-it",
     "olmo": "allenai/OLMo-1B",
+    "llama3": "meta-llama/Llama-3.2-1B",
 }

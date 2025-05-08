@@ -55,7 +55,7 @@ def train(cfg):
     ### WANDB & LOGGING ###
     wandb.init(
         project="kp",
-        name=output_dir,
+        name=str(output_dir),
     )
 
     ### CUSTOM DATA PREP ###
@@ -144,14 +144,15 @@ def train(cfg):
     )
 
     ### TRAINING ###
-    LOGGER.info("Evaluating before training for baseline metrics...")
-    trainer.evaluate()
-
     if cfg.model_checkpoint_parent is not None:
-        print(f"Resuming training from checkpoint: {cfg.model_checkpoint_parent}...")
+        LOGGER.info(
+            f"Resuming training from checkpoint: {cfg.model_checkpoint_parent}..."
+        )
         trainer.train(resume_from_checkpoint=True)
     else:
-        print("Starting fresh training run...")
+        LOGGER.info("Evaluating before training for baseline metrics...")
+        trainer.evaluate()
+        LOGGER.info("Starting fresh training run...")
         trainer.train()
     LOGGER.info("Training complete!")
 

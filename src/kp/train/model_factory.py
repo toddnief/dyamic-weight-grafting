@@ -9,12 +9,12 @@ from transformers import (
     GPTNeoXForCausalLM,
 )
 
-from kp.utils.constants import LOGGER
+from kp.utils.constants import DEVICE, LOGGER
 
 
 def setup_gpt(hf_id):
     tokenizer = GPT2Tokenizer.from_pretrained(hf_id)
-    model = GPT2LMHeadModel.from_pretrained(hf_id)
+    model = GPT2LMHeadModel.from_pretrained(hf_id).to(DEVICE)
     model.config.pad_token_id = model.config.eos_token_id
     tokenizer.pad_token = tokenizer.eos_token
 
@@ -42,7 +42,7 @@ def setup_gpt(hf_id):
 
 def setup_bart(hf_id):
     tokenizer = BartTokenizer.from_pretrained(hf_id)
-    model = BartForConditionalGeneration.from_pretrained(hf_id)
+    model = BartForConditionalGeneration.from_pretrained(hf_id).to(DEVICE)
 
     def preprocess_data(examples):
         inputs = examples["prompt"]
@@ -62,7 +62,7 @@ def setup_bart(hf_id):
 
 def setup_pythia(hf_id):
     tokenizer = AutoTokenizer.from_pretrained(hf_id)
-    model = GPTNeoXForCausalLM.from_pretrained(hf_id)
+    model = GPTNeoXForCausalLM.from_pretrained(hf_id).to(DEVICE)
     tokenizer.add_special_tokens({"pad_token": "[PAD]"})
 
     def preprocess_data(examples, max_length=2048):
@@ -86,7 +86,7 @@ def setup_pythia(hf_id):
 def setup_gemma(hf_id):
     LOGGER.info("Loading gemma model...")
     tokenizer = AutoTokenizer.from_pretrained(hf_id)
-    model = AutoModelForCausalLM.from_pretrained(hf_id, device_map="auto")
+    model = AutoModelForCausalLM.from_pretrained(hf_id).to(DEVICE)
 
     def preprocess_data(examples, max_length=1024):
         # Note: We have both QA examples and language modeling examples
@@ -162,7 +162,9 @@ def setup_gemma(hf_id):
 def setup_olmo(hf_id):
     LOGGER.info(f"Loading olmo model from {hf_id}...")
     tokenizer = AutoTokenizer.from_pretrained(hf_id, trust_remote_code=True)
-    model = AutoModelForCausalLM.from_pretrained(hf_id, trust_remote_code=True)
+    model = AutoModelForCausalLM.from_pretrained(hf_id, trust_remote_code=True).to(
+        DEVICE
+    )
 
     # Ensure pad token matches EOS if undefined
     if tokenizer.pad_token is None:
@@ -187,12 +189,39 @@ def setup_olmo(hf_id):
     return model, tokenizer, preprocess_data
 
 
+def setup_llama3(hf_id):
+    tokenizer = AutoTokenizer.from_pretrained(hf_id, use_fast=True)
+    model = AutoModelForCausalLM.from_pretrained(hf_id).to(DEVICE)
+
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+        model.config.pad_token_id = tokenizer.pad_token_id
+
+    tokenizer.padding_side = "right"  # keeps training masks correct
+
+    def preprocess_data(examples, max_length: int = 1024):
+        batch = tokenizer(
+            examples["text"],
+            truncation=True,
+            padding="max_length",
+            max_length=max_length,
+            return_tensors="pt",
+        )
+        labels = batch["input_ids"].clone()
+        labels[labels == tokenizer.pad_token_id] = -100  # ignore padding
+        batch["labels"] = labels
+        return batch
+
+    return model, tokenizer, preprocess_data
+
+
 model_dispatch = {
     "gpt2": setup_gpt,
     "bart": setup_bart,
     "pythia": setup_pythia,
     "gemma": setup_gemma,
     "olmo": setup_olmo,
+    "llama": setup_llama3,
 }
 
 

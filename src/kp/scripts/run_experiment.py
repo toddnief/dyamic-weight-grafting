@@ -66,7 +66,47 @@ MODEL_CONFIGS = {
             "o": {"component_path": "attn.c_proj"},
         },
     },
+    "gpt2-xl": {
+        "layers": "transformer.h",
+        "components": {
+            "mlp_up": {"component_path": "mlp.c_fc"},
+            "mlp_down": {"component_path": "mlp.c_proj"},
+            "q": {"component_path": "attn.c_attn", "slice_range": [0, 1600]},
+            "k": {"component_path": "attn.c_attn", "slice_range": [1600, 3200]},
+            "v": {"component_path": "attn.c_attn", "slice_range": [3200, 4800]},
+            "o": {"component_path": "attn.c_proj"},
+        },
+    },
+    "llama3": {
+        "layers": "model.layers",
+        "components": {
+            "mlp_up": {"component_path": "mlp.up_proj"},
+            "mlp_down": {"component_path": "mlp.down_proj"},
+        },
+    },
+    "olmo": {
+        "layers": "model.transformer.blocks",
+        "components": {
+            "mlp_up": {"component_path": "ff_proj"},
+            "mlp_down": {"component_path": "ff_out"},
+            "q": {"component_path": "att_proj", "slice_range": [0, 2048]},
+            "k": {"component_path": "att_proj", "slice_range": [2048, 4096]},
+            "v": {"component_path": "att_proj", "slice_range": [4096, 6144]},
+            "o": {"component_path": "attn_out"},
+        },
+    },
 }
+
+# (0-15): 16 x OLMoSequentialBlock(
+#   (dropout): Dropout(p=0.0, inplace=False)
+#   (act): SwiGLU()
+#   (attn_out): Linear(in_features=2048, out_features=2048, bias=False)
+#   (ff_out): Linear(in_features=8192, out_features=2048, bias=False)
+#   (rotary_emb): RotaryEmbedding()
+#   (att_proj): Linear(in_features=2048, out_features=6144, bias=False)
+#   (ff_proj): Linear(in_features=2048, out_features=16384, bias=False)
+#   (attn_norm): LayerNorm()
+#   (ff_norm): LayerNorm()
 
 
 @dataclass
@@ -181,7 +221,16 @@ def patch_component(
             recipient_component.weight[slice_range] = donor_component.weight[
                 slice_range
             ]
-            recipient_component.bias[slice_range] = donor_component.bias[slice_range]
+            # Note: Not all models have biases
+            if (
+                hasattr(donor_component, "bias")
+                and hasattr(recipient_component, "bias")
+                and donor_component.bias is not None
+                and recipient_component.bias is not None
+            ):
+                recipient_component.bias[slice_range] = donor_component.bias[
+                    slice_range
+                ]
 
 
 def get_layers_dict(n_layers):
@@ -286,7 +335,7 @@ def run_patched_inference(
     # Initialize cache and models before loop
     kv_cache = None
     llm_recipient = copy.deepcopy(llm_recipient_base)
-    # llm_donor = copy.deepcopy(llm_donor)
+    dropout_layers = None
 
     for idx in range(len(inputs["input_ids"][0])):
         # Note: patches are saved in a dictionary with token indices as keys
