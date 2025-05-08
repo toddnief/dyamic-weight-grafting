@@ -211,10 +211,38 @@ def patch_component(
     if slice_range is None:
         recipient_component.load_state_dict(donor_component.state_dict())
     else:
+        slice_range = slice(slice_range[0], slice_range[1])
+
+        # Note: for some models, we should slice along the columns, for others, along the rows
+        slice_axis = (
+            1 if donor_component.weight.size(1) > donor_component.weight.size(0) else 0
+        )
         with torch.no_grad():
-            recipient_component.weight[slice_range] = donor_component.weight[
-                slice_range
-            ]
+            if slice_axis == 1:
+                # Column slice
+                if slice_range.stop > donor_component.weight.size(
+                    1
+                ) or slice_range.stop > recipient_component.weight.size(1):
+                    raise IndexError(
+                        f"Slice {slice_range} is out of range for column slicing"
+                    )
+                print(f"Patching columns: {slice_range}")
+                recipient_component.weight[:, slice_range] = donor_component.weight[
+                    :, slice_range
+                ]
+            else:
+                # Row slice (if GPT2-small or similar model)
+                if slice_range.stop > donor_component.weight.size(
+                    0
+                ) or slice_range.stop > recipient_component.weight.size(0):
+                    raise IndexError(
+                        f"Slice {slice_range} is out of range for row slicing"
+                    )
+                print(f"Patching rows: {slice_range}")
+                recipient_component.weight[slice_range, :] = donor_component.weight[
+                    slice_range, :
+                ]
+
             # Note: Not all models have biases
             if (
                 hasattr(donor_component, "bias")
@@ -225,6 +253,36 @@ def patch_component(
                 recipient_component.bias[slice_range] = donor_component.bias[
                     slice_range
                 ]
+
+                # try:
+                #     with torch.no_grad():
+                #         recipient_component.weight[slice_range] = donor_component.weight[
+                #             slice_range
+                #         ]
+                # Note: Not all models have biases
+            if (
+                hasattr(donor_component, "bias")
+                and hasattr(recipient_component, "bias")
+                and donor_component.bias is not None
+                and recipient_component.bias is not None
+            ):
+                bias_size = recipient_component.bias.size(0)
+                if slice_axis == 1:
+                    # Column slicing (bias is 1D, we must index directly)
+                    slice_range = slice(
+                        slice_range.start, min(slice_range.stop, bias_size)
+                    )
+                print(f"Patching bias: {slice_range}")
+                recipient_component.bias[slice_range] = donor_component.bias[
+                    slice_range
+                ]
+        # except Exception as e:
+        #     # Show component shapes to help debug
+        #     LOGGER.info(f"Donor component shape: {donor_component.weight.shape}")
+        #     LOGGER.info(
+        #         f"Recipient component shape: {recipient_component.weight.shape}"
+        #     )
+        #     raise e
 
 
 def get_layers_dict(n_layers):
@@ -478,6 +536,11 @@ def main(cfg):
         cfg.smoke_test,
     )
     experiment_timestamp_dir.mkdir(parents=True, exist_ok=True)
+    LOGGER.info(
+        f"Saving experiment config to {experiment_timestamp_dir / 'experiment_config.json'}"
+    )
+    with open(experiment_timestamp_dir / "experiment_config.json", "w") as f:
+        json.dump(namespace_to_dict(cfg), f, indent=2)
 
     if cfg.patching_flag:
         hyperparams_dir = f"dropout_{cfg.inference_config.dropout_rate}_{cfg.inference_config.dropout_unit}_{cfg.inference_config.dropout_strategy}"

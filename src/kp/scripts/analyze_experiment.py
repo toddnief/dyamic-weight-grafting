@@ -19,7 +19,7 @@ from kp.utils.utils_io import load_experiment_config
 def load_experiment_results(
     results_dir: Path, top_k: int = 20
 ) -> tuple[List[Dict[str, Any]], Dict[float, List[Dict[str, Any]]]]:
-    results_paths = list(results_dir.rglob("*.json"))
+    results_paths = [p for p in results_dir.rglob("*.json") if "figures" not in p.parts]
     if not results_paths:
         LOGGER.warning(f"No JSON results found in {results_dir}")
         return [], {}
@@ -68,15 +68,19 @@ def load_experiment_results(
     return results, poor_performance_examples
 
 
-def plot_results(results: List[Dict[str, Any]], figures_dir: Path, cfg) -> None:
+def plot_results(
+    results: List[Dict[str, Any]], figures_dir: Path, results_dir: Path
+) -> None:
     """
     Generate and save plots from the experiment results.
     """
     # Name figures like this: gpt2_pre2sft_fmfa_fa_s1_dropout_vs_prob.png
-    model = cfg.model.pretrained
-    direction = cfg.model.patch_direction
-    dataset_name = cfg.paths.dataset_name
-    patch = cfg.patch_config_filename.split(".")[0]
+    # Load training config from training_config.json located in the same directory as the results
+    experiment_config = json.load(open(results_dir / "experiment_config.json"))
+    model = experiment_config["model"]
+    direction = experiment_config["model_config"]["patch_direction"]
+    dataset_name = experiment_config["data_options"]["dataset_name"]
+    patch = experiment_config["patch_config_filename"].split(".")[0]
     figure_prefix = f"{model}_{direction}_{dataset_name}_{patch}"
 
     # Sort results by dropout rate
@@ -96,6 +100,9 @@ def plot_results(results: List[Dict[str, Any]], figures_dir: Path, cfg) -> None:
     plt.title(figure_prefix)
     plt.ylim(-0.3, 1.3)
     plt.grid(True)
+    LOGGER.info(
+        f"Saving figure to {figures_dir / f'{figure_prefix}_dropout_vs_prob.png'}"
+    )
     plt.savefig(
         figures_dir / f"{figure_prefix}_dropout_vs_prob.png",
         dpi=300,
@@ -111,6 +118,9 @@ def plot_results(results: List[Dict[str, Any]], figures_dir: Path, cfg) -> None:
     plt.title(figure_prefix)
     plt.ylim(-0.3, 1.3)
     plt.grid(True)
+    LOGGER.info(
+        f"Saving figure to {figures_dir / f'{figure_prefix}_dropout_vs_accuracy.png'}"
+    )
     plt.savefig(
         figures_dir / f"{figure_prefix}_dropout_vs_accuracy.png",
         dpi=300,
@@ -165,7 +175,7 @@ def analyze_experiments(cfg) -> None:
 
         try:
             results, poor_performance_examples = load_experiment_results(subdir)
-            plot_results(results, figures_dir, cfg)
+            plot_results(results, figures_dir, results_dir)
             analyze_performance(poor_performance_examples, figures_dir)
         except Exception as e:
             LOGGER.warning(f"Skipping {subdir} due to error: {e}")
