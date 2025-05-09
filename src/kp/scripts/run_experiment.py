@@ -27,6 +27,8 @@ MODEL_CONFIGS = {
     "gemma": {
         "layers": "model.layers",
         "components": {
+            "ln_1": {"component_path": "input_layernorm"},
+            "ln_2": {"component_path": "post_attention_layernorm"},
             "mlp_up": {"component_path": "mlp.up_proj"},
             "mlp_down": {"component_path": "mlp.down_proj"},
             "gate": {"component_path": "mlp.gate_proj"},
@@ -35,6 +37,8 @@ MODEL_CONFIGS = {
             "v": {"component_path": "self_attn.v_proj"},
             "o": {"component_path": "self_attn.o_proj"},
         },
+        "ln_f": {"component_path": "model.norm"},
+        "lm_head": {"component_path": "lm_head"},
     },
     "pythia-2.8b": {
         "layers": "gpt_neox.layers",
@@ -69,6 +73,8 @@ MODEL_CONFIGS = {
     "gpt2-xl": {
         "layers": "transformer.h",
         "components": {
+            "ln_1": {"component_path": "ln_1"},
+            "ln_2": {"component_path": "ln_2"},
             "mlp_up": {"component_path": "mlp.c_fc"},
             "mlp_down": {"component_path": "mlp.c_proj"},
             "q": {"component_path": "attn.c_attn", "slice_range": [0, 1600]},
@@ -76,6 +82,8 @@ MODEL_CONFIGS = {
             "v": {"component_path": "attn.c_attn", "slice_range": [3200, 4800]},
             "o": {"component_path": "attn.c_proj"},
         },
+        "ln_f": {"component_path": "ln_f"},
+        "lm_head": {"component_path": "lm_head"},
     },
     "llama3": {
         "layers": "model.layers",
@@ -106,7 +114,6 @@ MODEL_CONFIGS = {
 @dataclass
 class PatchTargets:
     embeddings: bool = False
-    lm_head: bool = False
     q: bool = False
     k: bool = False
     v: bool = False
@@ -114,12 +121,14 @@ class PatchTargets:
     gate: bool = False
     mlp_up: bool = False
     mlp_down: bool = False
+    ln_1: bool = False
+    ln_2: bool = False
 
 
 @dataclass
 class Patch:
     patch_token_idx: int  # TODO: Should I remove this and use indeces instead?
-    indeces: Tuple[int, int]
+    # indeces: Tuple[int, int]
     patch_layers: List[int] = field(default_factory=list)
     targets: PatchTargets = field(default_factory=PatchTargets)
 
@@ -201,6 +210,7 @@ def patch_component(
     layer_idx,
     component_path,
     slice_range: Optional[slice] = None,
+    log_patches=False,
 ):
     recipient_layer = get_attr(llm_recipient, f"{layers_path}.{layer_idx}")
     recipient_component = get_attr(recipient_layer, component_path)
@@ -226,7 +236,8 @@ def patch_component(
                     raise IndexError(
                         f"Slice {slice_range} is out of range for column slicing"
                     )
-                print(f"Patching columns: {slice_range}")
+                if log_patches:
+                    LOGGER.info(f"Patching columns: {slice_range}")
                 recipient_component.weight[:, slice_range] = donor_component.weight[
                     :, slice_range
                 ]
@@ -238,28 +249,13 @@ def patch_component(
                     raise IndexError(
                         f"Slice {slice_range} is out of range for row slicing"
                     )
-                print(f"Patching rows: {slice_range}")
+                if log_patches:
+                    LOGGER.info(f"Patching rows: {slice_range}")
                 recipient_component.weight[slice_range, :] = donor_component.weight[
                     slice_range, :
                 ]
 
             # Note: Not all models have biases
-            if (
-                hasattr(donor_component, "bias")
-                and hasattr(recipient_component, "bias")
-                and donor_component.bias is not None
-                and recipient_component.bias is not None
-            ):
-                recipient_component.bias[slice_range] = donor_component.bias[
-                    slice_range
-                ]
-
-                # try:
-                #     with torch.no_grad():
-                #         recipient_component.weight[slice_range] = donor_component.weight[
-                #             slice_range
-                #         ]
-                # Note: Not all models have biases
             if (
                 hasattr(donor_component, "bias")
                 and hasattr(recipient_component, "bias")
@@ -272,17 +268,11 @@ def patch_component(
                     slice_range = slice(
                         slice_range.start, min(slice_range.stop, bias_size)
                     )
-                print(f"Patching bias: {slice_range}")
+                if log_patches:
+                    LOGGER.info(f"Patching bias: {slice_range}")
                 recipient_component.bias[slice_range] = donor_component.bias[
                     slice_range
                 ]
-        # except Exception as e:
-        #     # Show component shapes to help debug
-        #     LOGGER.info(f"Donor component shape: {donor_component.weight.shape}")
-        #     LOGGER.info(
-        #         f"Recipient component shape: {recipient_component.weight.shape}"
-        #     )
-        #     raise e
 
 
 def get_layers_dict(n_layers):
@@ -330,17 +320,17 @@ def get_patches(
         for token_idx in range(len(input_ids[0])):
             patches[token_idx] = Patch(
                 token_idx,
-                indeces=(0, len(input_ids[0])),
+                # indeces=(token_idx, token_idx + 1),
                 targets=PatchTargets(**vars(patch_spec.targets)),
                 patch_layers=patch_layers,
             )
 
     for patch_name, patch_spec in vars(patch_config.patches).items():
         # Skip other patch spec — already handled above
-        if patch_name == "other" or patch_name not in test_sentence_fields:
+        if patch_name == "other" or patch_name == "token_idx" or patch_name not in test_sentence_fields:
             continue
 
-        # Try to locate span in input_ids (with and without space)
+        # Otherwise, try to locate span in input_ids (with and without space)
         span = ex[getattr(patch_spec, "key")]
         variants = [span, span.lstrip()] if span.startswith(" ") else [span, " " + span]
 
@@ -364,8 +354,21 @@ def get_patches(
         for token_idx in range(start_idx, end_idx):
             patches[token_idx] = Patch(
                 token_idx,
-                indeces=(start_idx, end_idx),
+                # indeces=(start_idx, end_idx),
                 targets=targets,
+                patch_layers=patch_layers,
+            )
+
+    # Handle token_idx patch spec — override any existing patches
+    if hasattr(patch_config.patches, "token_idx"):
+        patch_spec = patch_config.patches.token_idx
+        patch_layers = parse_layers(getattr(patch_spec, "layers", None), layers_dict)
+        for token_idx in patch_spec.values:
+            token_idx = int(token_idx)
+            patches[token_idx] = Patch(
+                token_idx,
+                # indeces=(token_idx, token_idx + 1),
+                targets=PatchTargets(**vars(patch_spec.targets)),
                 patch_layers=patch_layers,
             )
 
@@ -378,6 +381,9 @@ def run_patched_inference(
     llm_donor,
     llm_recipient_base,
     model_config,
+    tokenizer,
+    patch_lm_head=False,
+    patch_embeddings=False,
     dropout_rate=0.0,
     dropout_unit="layer",  # choices: layer, matrix
     dropout_strategy="count",  # choices: count, random
@@ -395,12 +401,13 @@ def run_patched_inference(
             p = patches[idx]
             if log_patches:
                 LOGGER.info(
-                    f"Patching {p.targets} at layer {p.patch_layers} for token idx {idx}"
+                    f"Patching {p.targets} at layer {p.patch_layers} for token idx {idx}: {tokenizer.decode(inputs['input_ids'][0][idx])}"
                 )
 
-            # Reset models for patching
+            # Reset model for patching
             llm_recipient = copy.deepcopy(llm_recipient_base)
-            # llm_donor = copy.deepcopy(llm_donor_base)
+            if patch_embeddings:
+                llm_recipient.embed_tokens.load_state_dict(llm_donor.embed_tokens.state_dict())
 
             # Determine which layers to drop
             if dropout_strategy == "count":
@@ -431,12 +438,13 @@ def run_patched_inference(
                             llm_recipient,
                             model_config["layers"],
                             layer_idx,
+                            log_patches=log_patches,
                             **component_config,
                         )
         elif log_patches:
             LOGGER.info(f"No patch at token idx {idx}")
 
-        # Get the model output (patched or not) and save kv cache
+        # Get the model output and save kv cache
         with torch.no_grad():
             # Try the new cache API first, fall back to past_key_values if needed
             try:
@@ -455,7 +463,14 @@ def run_patched_inference(
                 )
                 kv_cache = patched_output.past_key_values
 
-    probs = torch.softmax(patched_output.logits[0, -1], dim=-1)
+    if patch_lm_head:
+        final_hidden_state = patched_output.last_hidden_state
+        final_ln = get_attr(llm_donor, "ln_f")
+        logits = llm_donor.lm_head(final_ln(final_hidden_state))
+    else:
+        logits = patched_output.logits
+
+    probs = torch.softmax(logits[0, -1], dim=-1)
     return probs, {"layers": dropout_layers}
 
 
@@ -591,6 +606,9 @@ def main(cfg):
         output_dir.mkdir(parents=True, exist_ok=True)
 
         log_patches = True
+        # Handle lm_head and embeddings patching (even if missing from patch config)
+        patch_lm_head = getattr(cfg.patch_config, "patch_lm_head", False)
+        patch_embeddings = getattr(cfg.patch_config, "patch_embeddings", False)
         results = []
         for ex in tqdm(metadata[:limit]):
             # Hacky way to handle preposition - add directly to example
@@ -612,6 +630,9 @@ def main(cfg):
                     llm_donor_base,
                     llm_recipient_base,
                     model_config,
+                    tokenizer,
+                    patch_lm_head=patch_lm_head,
+                    patch_embeddings=patch_embeddings,
                     **vars(cfg.inference_config),
                     log_patches=log_patches,
                 )
