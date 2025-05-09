@@ -4,7 +4,7 @@ import json
 import random
 import string
 from dataclasses import asdict, dataclass, field
-from typing import List, Optional, Tuple
+from typing import List, Optional
 
 import torch
 from tqdm import tqdm
@@ -37,6 +37,7 @@ MODEL_CONFIGS = {
             "v": {"component_path": "self_attn.v_proj"},
             "o": {"component_path": "self_attn.o_proj"},
         },
+        "embeddings": {"component_path": "model.embed_tokens"},
         "ln_f": {"component_path": "model.norm"},
         "lm_head": {"component_path": "lm_head"},
     },
@@ -327,7 +328,11 @@ def get_patches(
 
     for patch_name, patch_spec in vars(patch_config.patches).items():
         # Skip other patch spec — already handled above
-        if patch_name == "other" or patch_name == "token_idx" or patch_name not in test_sentence_fields:
+        if (
+            patch_name == "other"
+            or patch_name == "token_idx"
+            or patch_name not in test_sentence_fields
+        ):
             continue
 
         # Otherwise, try to locate span in input_ids (with and without space)
@@ -359,18 +364,44 @@ def get_patches(
                 patch_layers=patch_layers,
             )
 
-    # Handle token_idx patch spec — override any existing patches
-    if hasattr(patch_config.patches, "token_idx"):
-        patch_spec = patch_config.patches.token_idx
+    # Hacky override for index-based patching
+    for patch_name, patch_spec in vars(patch_config.patches).items():
+        if "token_idx" not in patch_name:
+            continue
+
         patch_layers = parse_layers(getattr(patch_spec, "layers", None), layers_dict)
+
         for token_idx in patch_spec.values:
             token_idx = int(token_idx)
+
+            if token_idx < 0:  # Handle negative indices
+                token_idx = len(input_ids[0]) + token_idx
+
+            if token_idx >= len(input_ids[0]) or token_idx < 0:
+                raise IndexError(
+                    f"Token index {token_idx} is out of range for input sequence."
+                )
+
+            LOGGER.info(
+                f"Overriding previous patch at index {token_idx} with {patch_name}"
+            )
             patches[token_idx] = Patch(
                 token_idx,
-                # indeces=(token_idx, token_idx + 1),
                 targets=PatchTargets(**vars(patch_spec.targets)),
                 patch_layers=patch_layers,
             )
+
+    # if hasattr(patch_config.patches, "token_idx"):
+    #     patch_spec = patch_config.patches.token_idx
+    #     patch_layers = parse_layers(getattr(patch_spec, "layers", None), layers_dict)
+    #     for token_idx in patch_spec.values:
+    #         token_idx = int(token_idx)
+    #         patches[token_idx] = Patch(
+    #             token_idx,
+    #             # indeces=(token_idx, token_idx + 1),
+    #             targets=PatchTargets(**vars(patch_spec.targets)),
+    #             patch_layers=patch_layers,
+    #         )
 
     return patches
 
@@ -383,7 +414,6 @@ def run_patched_inference(
     model_config,
     tokenizer,
     patch_lm_head=False,
-    patch_embeddings=False,
     dropout_rate=0.0,
     dropout_unit="layer",  # choices: layer, matrix
     dropout_strategy="count",  # choices: count, random
@@ -396,6 +426,9 @@ def run_patched_inference(
     dropout_layers = None
 
     for idx in range(len(inputs["input_ids"][0])):
+        # Reset model for patching
+        llm_recipient = copy.deepcopy(llm_recipient_base)
+
         # Note: patches are saved in a dictionary with token indices as keys
         if idx in patches and patches[idx].patch_layers:
             p = patches[idx]
@@ -403,11 +436,14 @@ def run_patched_inference(
                 LOGGER.info(
                     f"Patching {p.targets} at layer {p.patch_layers} for token idx {idx}: {tokenizer.decode(inputs['input_ids'][0][idx])}"
                 )
-
-            # Reset model for patching
-            llm_recipient = copy.deepcopy(llm_recipient_base)
-            if patch_embeddings:
-                llm_recipient.embed_tokens.load_state_dict(llm_donor.embed_tokens.state_dict())
+            if p.targets.embeddings:
+                recipient_embeddings = get_attr(
+                    llm_recipient, model_config["embeddings"]["component_path"]
+                )
+                donor_embeddings = get_attr(
+                    llm_donor, model_config["embeddings"]["component_path"]
+                )
+                recipient_embeddings.load_state_dict(donor_embeddings.state_dict())
 
             # Determine which layers to drop
             if dropout_strategy == "count":
@@ -608,7 +644,6 @@ def main(cfg):
         log_patches = True
         # Handle lm_head and embeddings patching (even if missing from patch config)
         patch_lm_head = getattr(cfg.patch_config, "patch_lm_head", False)
-        patch_embeddings = getattr(cfg.patch_config, "patch_embeddings", False)
         results = []
         for ex in tqdm(metadata[:limit]):
             # Hacky way to handle preposition - add directly to example
@@ -632,7 +667,6 @@ def main(cfg):
                     model_config,
                     tokenizer,
                     patch_lm_head=patch_lm_head,
-                    patch_embeddings=patch_embeddings,
                     **vars(cfg.inference_config),
                     log_patches=log_patches,
                 )
