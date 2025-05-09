@@ -83,12 +83,15 @@ MODEL_CONFIGS = {
             "v": {"component_path": "attn.c_attn", "slice_range": [3200, 4800]},
             "o": {"component_path": "attn.c_proj"},
         },
-        "ln_f": {"component_path": "ln_f"},
+        "embeddings": {"component_path": "transformer.wte"},
+        "ln_f": {"component_path": "transformer.ln_f"},
         "lm_head": {"component_path": "lm_head"},
     },
     "llama3": {
         "layers": "model.layers",
         "components": {
+            "ln_1": {"component_path": "input_layernorm"},
+            "ln_2": {"component_path": "post_attention_layernorm"},
             "mlp_up": {"component_path": "mlp.up_proj"},
             "mlp_down": {"component_path": "mlp.down_proj"},
             "gate": {"component_path": "mlp.gate_proj"},
@@ -97,6 +100,9 @@ MODEL_CONFIGS = {
             "v": {"component_path": "self_attn.v_proj"},
             "o": {"component_path": "self_attn.o_proj"},
         },
+        "embeddings": {"component_path": "model.embed_tokens"},
+        "ln_f": {"component_path": "model.layers.norm"},
+        "lm_head": {"component_path": "lm_head"},
     },
     "olmo": {
         "layers": "model.transformer.blocks",
@@ -199,7 +205,10 @@ def parse_layers(patch_layers, layers_dict=None):
 
 def get_attr(obj, attr_path):
     for attr in attr_path.split("."):
-        obj = getattr(obj, attr)
+        if attr.isdigit():
+            obj = obj[int(attr)]
+        else:
+            obj = getattr(obj, attr)
     return obj
 
 
