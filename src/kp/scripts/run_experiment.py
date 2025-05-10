@@ -44,30 +44,38 @@ MODEL_CONFIGS = {
     "pythia-2.8b": {
         "layers": "gpt_neox.layers",
         "components": {
+            "ln_1": {"component_path": "input_layernorm"},
+            "ln_2": {"component_path": "post_attention_layernorm"},
             "mlp_up": {"component_path": "mlp.dense_h_to_4h"},
             "mlp_down": {"component_path": "mlp.dense_4h_to_h"},
-            "q": {
-                "component_path": "attention.query_key_value"
-            },  # concatenated, so must handle specially
-            "k": {
-                "component_path": "attention.key_value",
-                "slice_range": slice(0, 768),
-            },
-            "v": {
-                "component_path": "attention.key_value",
-                "slice_range": slice(768, 1536),
-            },
+            "q": {"component_path": "attention.query_key_value"},
+            # "q": {
+            #     "component_path": "attention.query_key_value",
+            #     "slice_range": slice(0, 768),
+            # },
+            # "k": {
+            #     "component_path": "attention.query_key_value",
+            #     "slice_range": slice(768, 1536),
+            # },
+            # "v": {
+            #     "component_path": "attention.query_key_value",
+            #     "slice_range": slice(1536, 2304),
+            # },
             "o": {"component_path": "attention.dense"},
         },
+        "embeddings": {"component_path": "gpt_neox.embed_in"},
+        "ln_f": {"component_path": "gpt_neox.final_layer_norm"},
+        "lm_head": {"component_path": "gpt_neox.embed_out"},
     },
     "gpt2": {
         "layers": "transformer.h",
         "components": {
             "mlp_up": {"component_path": "mlp.c_fc"},
             "mlp_down": {"component_path": "mlp.c_proj"},
-            "q": {"component_path": "attn.c_attn", "slice_range": slice(0, 768)},
-            "k": {"component_path": "attn.c_attn", "slice_range": slice(768, 1536)},
-            "v": {"component_path": "attn.c_attn", "slice_range": slice(1536, 2304)},
+            "q": {"component_path": "attn.c_attn"},
+            # "q": {"component_path": "attn.c_attn", "slice_range": slice(0, 768)},
+            # "k": {"component_path": "attn.c_attn", "slice_range": slice(768, 1536)},
+            # "v": {"component_path": "attn.c_attn", "slice_range": slice(1536, 2304)},
             "o": {"component_path": "attn.c_proj"},
         },
     },
@@ -78,9 +86,10 @@ MODEL_CONFIGS = {
             "ln_2": {"component_path": "ln_2"},
             "mlp_up": {"component_path": "mlp.c_fc"},
             "mlp_down": {"component_path": "mlp.c_proj"},
-            "q": {"component_path": "attn.c_attn", "slice_range": [0, 1600]},
-            "k": {"component_path": "attn.c_attn", "slice_range": [1600, 3200]},
-            "v": {"component_path": "attn.c_attn", "slice_range": [3200, 4800]},
+            "q": {"component_path": "attn.c_attn"},
+            # "q": {"component_path": "attn.c_attn", "slice_range": slice(0, 1600)},
+            # "k": {"component_path": "attn.c_attn", "slice_range": slice(1600, 3200)},
+            # "v": {"component_path": "attn.c_attn", "slice_range": slice(3200, 4800)},
             "o": {"component_path": "attn.c_proj"},
         },
         "embeddings": {"component_path": "transformer.wte"},
@@ -107,13 +116,19 @@ MODEL_CONFIGS = {
     "olmo": {
         "layers": "model.transformer.blocks",
         "components": {
+            "ln_1": {"component_path": "attn_norm"},
+            "ln_2": {"component_path": "ff_norm"},
             "mlp_up": {"component_path": "ff_proj"},
             "mlp_down": {"component_path": "ff_out"},
-            "q": {"component_path": "att_proj", "slice_range": [0, 2048]},
-            "k": {"component_path": "att_proj", "slice_range": [2048, 4096]},
-            "v": {"component_path": "att_proj", "slice_range": [4096, 6144]},
+            "q": {"component_path": "att_proj"},
+            # "q": {"component_path": "att_proj", "slice_range": [0, 2048]},
+            # "k": {"component_path": "att_proj", "slice_range": [2048, 4096]},
+            # "v": {"component_path": "att_proj", "slice_range": [4096, 6144]},
             "o": {"component_path": "attn_out"},
         },
+        "embeddings": {"component_path": "model.transformer.wte"},
+        "ln_f": {"component_path": "model.ln_f"},
+        "lm_head": {"component_path": "lm_head"},
     },
 }
 
@@ -231,8 +246,6 @@ def patch_component(
     if slice_range is None:
         recipient_component.load_state_dict(donor_component.state_dict())
     else:
-        slice_range = slice(slice_range[0], slice_range[1])
-
         # Note: for some models, we should slice along the columns, for others, along the rows
         slice_axis = (
             1 if donor_component.weight.size(1) > donor_component.weight.size(0) else 0
@@ -433,6 +446,9 @@ def run_patched_inference(
     kv_cache = None
     llm_recipient = copy.deepcopy(llm_recipient_base)
     dropout_layers = None
+
+    if log_patches:
+        LOGGER.info(f"inputs: {inputs}")
 
     for idx in range(len(inputs["input_ids"][0])):
         # Reset model for patching

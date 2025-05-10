@@ -43,7 +43,6 @@ for model, dataset, direction, patch in itertools.product(
         "experiment",
         f"SMOKE_TEST={smoke_test}",
         f"TIMESTAMP={timestamp}",
-        "CONFIG=config_experiments.yaml",
         f"PATCH_CONFIG={patch}",
         f"MODEL={model}",
         f"DATASET={dataset_name}",

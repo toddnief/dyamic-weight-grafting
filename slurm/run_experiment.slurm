@@ -5,7 +5,7 @@
 #SBATCH --cpus-per-task=8
 #SBATCH --constraint="a100|h100"
 #SBATCH --time=01:00:00
-#SBATCH --array=0-10 # Default; overridden dynamically by Makefile if SINGLE_RUN is set
+#SBATCH --array=0-5 # Default; overridden dynamically by Makefile if SINGLE_RUN is set
 
 # Environment variables passed from Makefile
 TIMESTAMP=${TIMESTAMP:-$(date +"%Y%m%d_%H%M%S")}
@@ -20,7 +20,7 @@ DATASET_DIR=${DATASET_DIR}
 PATCH_DIRECTION=${DIRECTION}
 
 # Setup dropout experiment param sweep
-DROPOUT_RATES=(0.0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1.0)
+DROPOUT_RATES=(0.0 0.2 0.4 0.6 0.8 1.0)
 DROPOUT=${DROPOUT_RATES[$SLURM_ARRAY_TASK_ID]}
 
 echo "[$SLURM_ARRAY_TASK_ID] Model: $MODEL | Dataset: $DATASET | Patch: $PATCH_CONFIG_FILE | Dropout: $DROPOUT"

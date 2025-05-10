@@ -168,10 +168,17 @@ if __name__ == "__main__":
         default="config_train.yaml",
         help="Path to the config file",
     )
+    parser.add_argument(
+        "--override",
+        nargs="*",
+        default=[],
+        help="Override config entries with KEY=VALUE pairs",
+    )
     args = parser.parse_args()
 
     yaml_path = TRAINING_CONFIG_DIR / args.config
     LOGGER.info(f"Training with config: {yaml_path}")
-    cfg = load_training_config(yaml_path)
+    LOGGER.info(f"Overrides: {args.override}")
+    cfg = load_training_config(yaml_path, overrides=args.override)
 
     train(cfg)

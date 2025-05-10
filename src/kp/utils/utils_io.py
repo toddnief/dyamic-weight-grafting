@@ -57,9 +57,14 @@ def load_experiment_config(
     return dict_to_namespace(experiment_config)
 
 
-def load_training_config(training_config_path):
+def load_training_config(training_config_path, overrides=None):
     with open(training_config_path, "r") as f:
         training_config = yaml.safe_load(f)
+
+    LOGGER.info(f"Overrides: {overrides}")
+    for item in overrides or []:
+        key, val = item.split("=", 1)
+        set_nested(training_config, key, yaml.safe_load(val))
     return dict_to_namespace(training_config)
 
 
