@@ -4,13 +4,13 @@ import time
 
 timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
 
-smoke_test = "false"  # Note: use "true" or "false"
+smoke_test = "true"  # Note: use "true" or "false"
 single_run = True  # Use booleans here
 
 # models = ["olmo", "llama3"]
 models = ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]  # remove olmo for now
 datasets = [
-    {"name": "fake_movies_fake_actors", "dir": "2025-05-03_21-10-38"},
+    # {"name": "fake_movies_fake_actors", "dir": "2025-05-03_21-10-38"},
     {"name": "fake_movies_real_actors", "dir": "2025-05-02_16-23-04"},
 ]
 
@@ -44,17 +44,17 @@ model_dirs = {
 patch_configs = [
     "no_patching.yaml",
     "fe.yaml",
-    "lt.yaml",
-    "fe_lt.yaml",
-    "fe_lt_complement.yaml",
-    "not_lt.yaml",
-    "m.yaml",
-    "fe_m.yaml",
-    "fe_m_lt.yaml",
-    "m_lt.yaml",
-    "not_fe_m.yaml",
-    "not_fe_m_lt.yaml",
-    "fe_m_p_lt.yaml",
+    # "lt.yaml",
+    # "fe_lt.yaml",
+    # "fe_lt_complement.yaml",
+    # "not_lt.yaml",
+    # "m.yaml",
+    # "fe_m.yaml",
+    # "fe_m_lt.yaml",
+    # "m_lt.yaml",
+    # "not_fe_m.yaml",
+    # "not_fe_m_lt.yaml",
+    # "fe_m_p_lt.yaml",
     "fe_m_p.yaml",
 ]
 
@@ -94,7 +94,7 @@ for model, dataset, patch in itertools.product(models, datasets, patch_configs):
     dataset_dir = dataset["dir"]
     model_dir = model_dirs[model][dataset_name]
 
-    if patch == "no_patch.yaml":
+    if patch == "no_patching.yaml":
         for direction in ["pre2sft", "sft2pre"]:
             cmd = create_command(
                 model, patch, direction, dataset_name, dataset_dir, model_dir, single_run

@@ -8,8 +8,9 @@ from typing import List, Optional
 
 import torch
 from tqdm import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForCausalLM
 
+from kp.train.model_factory import model_factory
 from kp.utils.constants import (
     DATA_DIR,
     DEVICE,
@@ -22,7 +23,6 @@ from kp.utils.constants import (
     TRAINED_MODELS_DIR,
 )
 from kp.utils.utils_io import load_experiment_config, namespace_to_dict
-from kp.train.model_factory import model_factory
 
 MODEL_CONFIGS = {
     "gemma": {
@@ -150,8 +150,7 @@ class PatchTargets:
 
 @dataclass
 class Patch:
-    patch_token_idx: int  # TODO: Should I remove this and use indeces instead?
-    # indeces: Tuple[int, int]
+    patch_token_idx: int
     patch_layers: List[int] = field(default_factory=list)
     targets: PatchTargets = field(default_factory=PatchTargets)
 
@@ -543,6 +542,8 @@ def get_experiment_timestamp_dir(
 ):
     if both_directions_checkpoint is None:
         both_directions_checkpoint = "best_saved_checkpoint"
+
+    both_directions_checkpoint = both_directions_checkpoint.replace("/", "_")
     checkpoint_name = (
         f"{both_directions_parent}_{both_directions_checkpoint}_{timestamp}"
     )
@@ -650,12 +651,27 @@ def main(cfg):
 
     model_config = MODEL_CONFIGS[cfg.model.pretrained]
     n_layers = len(get_attr(llm_recipient_base, model_config["layers"]))
-    limit = 5 if smoke_test else None
+    limit = 30 if smoke_test else None
 
-    movie_patches = set(["fe_m", "fe_m_lt", "m", "m_lt", "fe_m_lt_complement", "not_fe_m_lt", "fe_m_lt_p", "fe_m_p"])
+    movie_patches = set(
+        [
+        "m.yaml",
+        "fe_m.yaml",
+        "fe_m_lt.yaml",
+        "m_lt.yaml",
+        "not_fe_m.yaml",
+        "not_fe_m_lt.yaml",
+        "fe_m_p_lt.yaml",
+        "fe_m_p.yaml",
+        ]
+    )
+
     for template_name, test_template in vars(cfg.test_templates).items():
         # TODO: hack to only run movie patches for sentence_3
-        if template_name != "sentence_3" and cfg.patch_config_filename.split(".")[0] in movie_patches:
+        if (
+            template_name != "sentence_3"
+            and cfg.patch_config_filename in movie_patches
+        ):
             continue
 
         test_sentence_template = test_template.test_sentence_template
@@ -666,6 +682,8 @@ def main(cfg):
         output_dir.mkdir(parents=True, exist_ok=True)
 
         log_patches = True
+
+        # TODO: Fix the patch_lm_head logic to allow choosing
         # Handle lm_head and embeddings patching (even if missing from patch config)
         patch_lm_head = getattr(cfg.patch_config, "patch_lm_head", False)
         results = []
