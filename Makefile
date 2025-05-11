@@ -45,7 +45,7 @@ experiment:
 	$(eval LOG_FILE_PREFIX := ${logs_dir}${NOW})
 	$(eval output_file := ${LOG_FILE_PREFIX}_res.txt)
 	$(eval err_file := ${LOG_FILE_PREFIX}_err.txt)
-	$(eval ARRAY_RANGE := $(if $(SINGLE_RUN),$(SINGLE_RUN),0-10))
+	$(eval ARRAY_RANGE := $(if $(SINGLE_RUN),$(SINGLE_RUN),0-5))
 	$(eval JOB_ID := $(shell ${SBATCH} --parsable \
 		--partition=$(PARTITION) \
 		--output="$(output_file)" \

@@ -7,6 +7,9 @@
 #SBATCH --time=01:00:00
 #SBATCH --array=0-5 # Default; overridden dynamically by Makefile if SINGLE_RUN is set
 
+# Note: Some models require this to be set to load from Huggingface
+export HF_AUTO_MODEL_TRUST_REMOTE_CODE=1
+
 # Environment variables passed from Makefile
 TIMESTAMP=${TIMESTAMP:-$(date +"%Y%m%d_%H%M%S")}
 CONFIG_FILE=${CONFIG:-config_experiments.yaml}

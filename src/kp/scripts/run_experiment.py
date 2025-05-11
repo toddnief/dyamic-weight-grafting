@@ -22,6 +22,7 @@ from kp.utils.constants import (
     TRAINED_MODELS_DIR,
 )
 from kp.utils.utils_io import load_experiment_config, namespace_to_dict
+from kp.train.model_factory import model_factory
 
 MODEL_CONFIGS = {
     "gemma": {
@@ -404,26 +405,11 @@ def get_patches(
                     f"Token index {token_idx} is out of range for input sequence."
                 )
 
-            LOGGER.info(
-                f"Overriding previous patch at index {token_idx} with {patch_name}"
-            )
             patches[token_idx] = Patch(
                 token_idx,
                 targets=PatchTargets(**vars(patch_spec.targets)),
                 patch_layers=patch_layers,
             )
-
-    # if hasattr(patch_config.patches, "token_idx"):
-    #     patch_spec = patch_config.patches.token_idx
-    #     patch_layers = parse_layers(getattr(patch_spec, "layers", None), layers_dict)
-    #     for token_idx in patch_spec.values:
-    #         token_idx = int(token_idx)
-    #         patches[token_idx] = Patch(
-    #             token_idx,
-    #             # indeces=(token_idx, token_idx + 1),
-    #             targets=PatchTargets(**vars(patch_spec.targets)),
-    #             patch_layers=patch_layers,
-    #         )
 
     return patches
 
@@ -625,31 +611,54 @@ def main(cfg):
 
     # Load models
     pretrained = MODEL_TO_HFID[cfg.model.pretrained]
-    tokenizer = AutoTokenizer.from_pretrained(pretrained)
+    llm_sft, _, _ = model_factory(str(both_directions_path))
+    llm_pretrained, tokenizer, _ = model_factory(pretrained)
 
     if cfg.model.patch_direction == "sft2pre":
         LOGGER.info(f"Loading donor model from {both_directions_path}")
-        llm_donor_base = AutoModelForCausalLM.from_pretrained(both_directions_path).to(
-            DEVICE
-        )
+        llm_donor_base = llm_sft
         LOGGER.info(f"Loading recipient model from {pretrained}")
-        llm_recipient_base = AutoModelForCausalLM.from_pretrained(pretrained).to(DEVICE)
+        llm_recipient_base = llm_pretrained
     elif cfg.model.patch_direction == "pre2sft":
         LOGGER.info(f"Loading donor model from {pretrained}")
-        llm_donor_base = AutoModelForCausalLM.from_pretrained(pretrained).to(DEVICE)
+        llm_donor_base = llm_pretrained
         LOGGER.info(f"Loading recipient model from {both_directions_path}")
-        llm_recipient_base = AutoModelForCausalLM.from_pretrained(
-            both_directions_path
-        ).to(DEVICE)
+        llm_recipient_base = llm_sft
     elif cfg.model.patch_direction == "both2one":
         LOGGER.info(f"Loading donor model from {both_directions_path}")
-        llm_donor_base = AutoModelForCausalLM.from_pretrained(both_directions_path).to(
-            DEVICE
-        )
+        llm_donor_base = llm_sft
         LOGGER.info(f"Loading recipient model from {one_direction_path}")
+        # TODO: this won't work for olmo...
         llm_recipient_base = AutoModelForCausalLM.from_pretrained(
             one_direction_path
         ).to(DEVICE)
+
+    # pretrained = MODEL_TO_HFID[cfg.model.pretrained]
+    # tokenizer = AutoTokenizer.from_pretrained(pretrained)
+
+    # if cfg.model.patch_direction == "sft2pre":
+    #     LOGGER.info(f"Loading donor model from {both_directions_path}")
+    #     llm_donor_base = AutoModelForCausalLM.from_pretrained(both_directions_path).to(
+    #         DEVICE
+    #     )
+    #     LOGGER.info(f"Loading recipient model from {pretrained}")
+    #     llm_recipient_base = AutoModelForCausalLM.from_pretrained(pretrained).to(DEVICE)
+    # elif cfg.model.patch_direction == "pre2sft":
+    #     LOGGER.info(f"Loading donor model from {pretrained}")
+    #     llm_donor_base = AutoModelForCausalLM.from_pretrained(pretrained).to(DEVICE)
+    #     LOGGER.info(f"Loading recipient model from {both_directions_path}")
+    #     llm_recipient_base = AutoModelForCausalLM.from_pretrained(
+    #         both_directions_path
+    #     ).to(DEVICE)
+    # elif cfg.model.patch_direction == "both2one":
+    #     LOGGER.info(f"Loading donor model from {both_directions_path}")
+    #     llm_donor_base = AutoModelForCausalLM.from_pretrained(both_directions_path).to(
+    #         DEVICE
+    #     )
+    #     LOGGER.info(f"Loading recipient model from {one_direction_path}")
+    #     llm_recipient_base = AutoModelForCausalLM.from_pretrained(
+    #         one_direction_path
+    #     ).to(DEVICE)
 
     with open(metadata_path, "r") as f:
         metadata = [json.loads(line) for line in f]
@@ -658,7 +667,12 @@ def main(cfg):
     n_layers = len(get_attr(llm_recipient_base, model_config["layers"]))
     limit = 5 if cfg.smoke_test else None
 
+    movie_patches = set(["fe_m", "fe_m_lt", "m", "m_lt", "fe_m_lt_complement", "not_fe_m_lt", "fe_m_lt_p", "fe_m_p"])
     for template_name, test_template in vars(cfg.test_templates).items():
+        # TODO: hack to only run movie patches for sentence_3
+        if template_name != "sentence_3" and cfg.patch_config_filename.split(".")[0] in movie_patches:
+            continue
+
         test_sentence_template = test_template.test_sentence_template
         test_preposition = test_template.preposition
 
@@ -720,6 +734,8 @@ def main(cfg):
                 for prob, idx in zip(topk_probs.tolist(), topk_indices.tolist())
             ]
 
+            target_token_rank = (probs > target_token_prob).sum().item()
+
             results.append(
                 {
                     "ex_id": ex["id"],
@@ -729,6 +745,7 @@ def main(cfg):
                         "token": target_token,
                         "token_idx": target_token_idx,
                         "token_prob": target_token_prob,
+                        "token_rank": target_token_rank,
                     },
                 }
             )
