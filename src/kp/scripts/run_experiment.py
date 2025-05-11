@@ -66,7 +66,7 @@ MODEL_CONFIGS = {
         },
         "embeddings": {"component_path": "gpt_neox.embed_in"},
         "ln_f": {"component_path": "gpt_neox.final_layer_norm"},
-        "lm_head": {"component_path": "gpt_neox.embed_out"},
+        "lm_head": {"component_path": "embed_out"},
     },
     "gpt2": {
         "layers": "transformer.h",
@@ -111,7 +111,7 @@ MODEL_CONFIGS = {
             "o": {"component_path": "self_attn.o_proj"},
         },
         "embeddings": {"component_path": "model.embed_tokens"},
-        "ln_f": {"component_path": "model.layers.norm"},
+        "ln_f": {"component_path": "model.norm"},
         "lm_head": {"component_path": "lm_head"},
     },
     "olmo": {
@@ -433,6 +433,9 @@ def run_patched_inference(
     llm_recipient = copy.deepcopy(llm_recipient_base)
     dropout_layers = None
 
+    # TODO: for now, setting this up so that we patch lm_head only if last token is patched
+    patch_lm_head = False
+
     if log_patches:
         LOGGER.info(f"inputs: {inputs}")
 
@@ -488,6 +491,10 @@ def run_patched_inference(
                             log_patches=log_patches,
                             **component_config,
                         )
+
+            # If last index is patched, set patch_lm_head to True
+            if idx == len(inputs["input_ids"][0]) - 1:
+                patch_lm_head = True
         elif log_patches:
             LOGGER.info(f"No patch at token idx {idx}")
 
@@ -499,7 +506,7 @@ def run_patched_inference(
                     inputs["input_ids"][:, idx : idx + 1],
                     use_cache=True,
                     cache=kv_cache,
-                    output_hidden_states=True if "olmo" in str(type(llm_recipient)).lower() else None,
+                    output_hidden_states=True,
                 )
                 kv_cache = patched_output.cache
             except TypeError:
@@ -508,26 +515,19 @@ def run_patched_inference(
                     inputs["input_ids"][:, idx : idx + 1],
                     use_cache=True,
                     past_key_values=kv_cache,
-                    output_hidden_states=True if "olmo" in str(type(llm_recipient)).lower() else None,
+                    output_hidden_states=True,
                 )
                 kv_cache = patched_output.past_key_values
 
     if patch_lm_head:
-        # Handle different model architectures
-        if hasattr(patched_output, "last_hidden_state"):
-            final_hidden_state = patched_output.last_hidden_state
-        elif hasattr(patched_output, "hidden_states") and patched_output.hidden_states is not None:
-            final_hidden_state = patched_output.hidden_states[-1]
-        else:
-            # For models that return a tuple, the first element is usually the hidden states
-            final_hidden_state = patched_output[0]
-            
         final_ln = get_attr(llm_donor, model_config["ln_f"]["component_path"])
-        logits = llm_donor.lm_head(final_ln(final_hidden_state))
+        lm_head = get_attr(llm_donor, model_config["lm_head"]["component_path"])
+        logits = lm_head(final_ln(patched_output.hidden_states[-1]))
     else:
         logits = patched_output.logits
 
     probs = torch.softmax(logits[0, -1], dim=-1)
+    # TODO: dropout layers is only the last token, fix this if we need it
     return probs, {"layers": dropout_layers}
 
 

@@ -5,9 +5,10 @@ import time
 timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
 
 smoke_test = "false"  # Note: use "true" or "false"
+single_run = True  # Use booleans here
 
 # models = ["olmo", "llama3"]
-models = ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"] # remove olmo for now
+models = ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]  # remove olmo for now
 datasets = [
     {"name": "fake_movies_fake_actors", "dir": "2025-05-03_21-10-38"},
     {"name": "fake_movies_real_actors", "dir": "2025-05-02_16-23-04"},
@@ -53,13 +54,15 @@ patch_configs = [
     "m_lt.yaml",
     "not_fe_m.yaml",
     "not_fe_m_lt.yaml",
-    "fe_m_lt_p.yaml",
+    "fe_m_p_lt.yaml",
     "fe_m_p.yaml",
 ]
 
 
-def create_command(model, patch, direction, dataset_name, dataset_dir, model_dir):
-    return [
+def create_command(
+    model, patch, direction, dataset_name, dataset_dir, model_dir, single_run=False
+):
+    cmd = [
         "make",
         "experiment",
         f"SMOKE_TEST={smoke_test}",
@@ -71,6 +74,9 @@ def create_command(model, patch, direction, dataset_name, dataset_dir, model_dir
         f"MODEL_DIR={model_dir}",
         f"DIRECTION={direction}",
     ]
+    if single_run:
+        cmd.append("SINGLE_RUN=0")
+    return cmd
 
 
 for model, dataset, patch in itertools.product(models, datasets, patch_configs):
@@ -91,14 +97,14 @@ for model, dataset, patch in itertools.product(models, datasets, patch_configs):
     if patch == "no_patch.yaml":
         for direction in ["pre2sft", "sft2pre"]:
             cmd = create_command(
-                model, patch, direction, dataset_name, dataset_dir, model_dir
+                model, patch, direction, dataset_name, dataset_dir, model_dir, single_run
             )
             print("Running:", " ".join(cmd))
             subprocess.run(cmd)
     else:
         direction = "sft2pre"
         cmd = create_command(
-            model, patch, direction, dataset_name, dataset_dir, model_dir
+            model, patch, direction, dataset_name, dataset_dir, model_dir, single_run
         )
         print("Running:", " ".join(cmd))
         subprocess.run(cmd)

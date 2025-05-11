@@ -57,10 +57,10 @@ experiment:
 		$(slurm_dir)run_experiment.slurm))
 	@echo "Submitted run_experiment job: $(JOB_ID)"
 
-	${SBATCH} \
-	--dependency=afterok:$(JOB_ID) \
-	--partition=$(PARTITION) \
-	--output="$(output_file)" \
-	--error="$(err_file)" \
-	--export=ALL,TIMESTAMP=$(NOW),MODEL=$(MODEL),DATASET=$(DATASET),DIRECTION=$(DIRECTION),DATASET_DIR=$(DATASET_DIR),MODEL_DIR=$(MODEL_DIR) \
-	$(slurm_dir)analyze_experiment.slurm
+# ${SBATCH} \
+# --dependency=afterok:$(JOB_ID) \
+# --partition=$(PARTITION) \
+# --output="$(output_file)" \
+# --error="$(err_file)" \
+# --export=ALL,TIMESTAMP=$(NOW),MODEL=$(MODEL),DATASET=$(DATASET),DIRECTION=$(DIRECTION),DATASET_DIR=$(DATASET_DIR),MODEL_DIR=$(MODEL_DIR) \
+# $(slurm_dir)analyze_experiment.slurm
