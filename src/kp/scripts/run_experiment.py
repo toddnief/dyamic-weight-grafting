@@ -499,6 +499,7 @@ def run_patched_inference(
                     inputs["input_ids"][:, idx : idx + 1],
                     use_cache=True,
                     cache=kv_cache,
+                    output_hidden_states=True if "olmo" in str(type(llm_recipient)).lower() else None,
                 )
                 kv_cache = patched_output.cache
             except TypeError:
@@ -507,12 +508,21 @@ def run_patched_inference(
                     inputs["input_ids"][:, idx : idx + 1],
                     use_cache=True,
                     past_key_values=kv_cache,
+                    output_hidden_states=True if "olmo" in str(type(llm_recipient)).lower() else None,
                 )
                 kv_cache = patched_output.past_key_values
 
     if patch_lm_head:
-        final_hidden_state = patched_output.last_hidden_state
-        final_ln = get_attr(llm_donor, "ln_f")
+        # Handle different model architectures
+        if hasattr(patched_output, "last_hidden_state"):
+            final_hidden_state = patched_output.last_hidden_state
+        elif hasattr(patched_output, "hidden_states") and patched_output.hidden_states is not None:
+            final_hidden_state = patched_output.hidden_states[-1]
+        else:
+            # For models that return a tuple, the first element is usually the hidden states
+            final_hidden_state = patched_output[0]
+            
+        final_ln = get_attr(llm_donor, model_config["ln_f"]["component_path"])
         logits = llm_donor.lm_head(final_ln(final_hidden_state))
     else:
         logits = patched_output.logits
@@ -548,6 +558,8 @@ def get_experiment_timestamp_dir(
 
 
 def main(cfg):
+    smoke_test = bool(cfg.smoke_test)
+
     models_dir = (
         TRAINED_MODELS_DIR
         / MODEL_TO_HFID[cfg.model.pretrained]
@@ -595,7 +607,7 @@ def main(cfg):
         patch_description,
         cfg.paths.dataset_name,
         cfg.timestamp,
-        cfg.smoke_test,
+        smoke_test,
     )
     experiment_timestamp_dir.mkdir(parents=True, exist_ok=True)
     LOGGER.info(
@@ -633,39 +645,12 @@ def main(cfg):
             one_direction_path
         ).to(DEVICE)
 
-    # pretrained = MODEL_TO_HFID[cfg.model.pretrained]
-    # tokenizer = AutoTokenizer.from_pretrained(pretrained)
-
-    # if cfg.model.patch_direction == "sft2pre":
-    #     LOGGER.info(f"Loading donor model from {both_directions_path}")
-    #     llm_donor_base = AutoModelForCausalLM.from_pretrained(both_directions_path).to(
-    #         DEVICE
-    #     )
-    #     LOGGER.info(f"Loading recipient model from {pretrained}")
-    #     llm_recipient_base = AutoModelForCausalLM.from_pretrained(pretrained).to(DEVICE)
-    # elif cfg.model.patch_direction == "pre2sft":
-    #     LOGGER.info(f"Loading donor model from {pretrained}")
-    #     llm_donor_base = AutoModelForCausalLM.from_pretrained(pretrained).to(DEVICE)
-    #     LOGGER.info(f"Loading recipient model from {both_directions_path}")
-    #     llm_recipient_base = AutoModelForCausalLM.from_pretrained(
-    #         both_directions_path
-    #     ).to(DEVICE)
-    # elif cfg.model.patch_direction == "both2one":
-    #     LOGGER.info(f"Loading donor model from {both_directions_path}")
-    #     llm_donor_base = AutoModelForCausalLM.from_pretrained(both_directions_path).to(
-    #         DEVICE
-    #     )
-    #     LOGGER.info(f"Loading recipient model from {one_direction_path}")
-    #     llm_recipient_base = AutoModelForCausalLM.from_pretrained(
-    #         one_direction_path
-    #     ).to(DEVICE)
-
     with open(metadata_path, "r") as f:
         metadata = [json.loads(line) for line in f]
 
     model_config = MODEL_CONFIGS[cfg.model.pretrained]
     n_layers = len(get_attr(llm_recipient_base, model_config["layers"]))
-    limit = 5 if cfg.smoke_test else None
+    limit = 5 if smoke_test else None
 
     movie_patches = set(["fe_m", "fe_m_lt", "m", "m_lt", "fe_m_lt_complement", "not_fe_m_lt", "fe_m_lt_p", "fe_m_p"])
     for template_name, test_template in vars(cfg.test_templates).items():

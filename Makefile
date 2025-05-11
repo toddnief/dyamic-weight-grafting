@@ -46,11 +46,13 @@ experiment:
 	$(eval output_file := ${LOG_FILE_PREFIX}_res.txt)
 	$(eval err_file := ${LOG_FILE_PREFIX}_err.txt)
 	$(eval ARRAY_RANGE := $(if $(SINGLE_RUN),$(SINGLE_RUN),0-5))
+	$(eval TIME_LIMIT := $(if $(SMOKE_TEST),00:20:00,01:00:00))
 	$(eval JOB_ID := $(shell ${SBATCH} --parsable \
 		--partition=$(PARTITION) \
 		--output="$(output_file)" \
 		--error="$(err_file)" \
 		--array=$(ARRAY_RANGE) \
+		--time=$(TIME_LIMIT) \
 		--export=ALL,TIMESTAMP=$(NOW),CONFIG=$(CONFIG),PATCH_CONFIG=$(PATCH_CONFIG),MODEL=$(MODEL),MODEL_DIR=$(MODEL_DIR),DATASET=$(DATASET),DATASET_DIR=$(DATASET_DIR),DIRECTION=$(DIRECTION),SMOKE_TEST=$(SMOKE_TEST) \
 		$(slurm_dir)run_experiment.slurm))
 	@echo "Submitted run_experiment job: $(JOB_ID)"

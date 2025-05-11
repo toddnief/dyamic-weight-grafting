@@ -25,6 +25,15 @@ def namespace_to_dict(ns):
     else:
         return ns
 
+def parse_override_value(key, val):
+    # Explicitly handle Boolean parsing for specific keys
+    boolean_keys = ["inference_config.smoke_test"]
+    
+    if key in boolean_keys:
+        return val.lower() in ("true", "yes", "1")
+    
+    # Fallback to YAML parsing for everything else
+    return yaml.safe_load(val)
 
 def set_nested(config, key_path, value):
     keys = key_path.split(".")
@@ -52,7 +61,7 @@ def load_experiment_config(
     LOGGER.info(f"Overrides: {overrides}")
     for item in overrides or []:
         key, val = item.split("=", 1)
-        set_nested(experiment_config, key, yaml.safe_load(val))
+        set_nested(experiment_config, key, parse_override_value(key, val))
 
     return dict_to_namespace(experiment_config)
 
