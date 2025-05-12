@@ -35,6 +35,7 @@ OVERRIDES=()
 [ -n "$DATASET_DIR" ] && OVERRIDES+=("paths.dataset_dir=$DATASET_DIR")
 [ -n "$MODEL_DIR" ] && OVERRIDES+=("paths.both_directions_parent=$MODEL_DIR")
 [ -n "$PATCH_DIRECTION" ] && OVERRIDES+=("model.patch_direction=$PATCH_DIRECTION")
+[ -n "$LM_HEAD_CONFIG" ] && OVERRIDES+=("inference_config.patch_lm_head=$LM_HEAD_CONFIG")
 if [ "$SMOKE_TEST" = "true" ] || [ "$SMOKE_TEST" = "1" ]; then
     OVERRIDES+=("smoke_test=1")
 else

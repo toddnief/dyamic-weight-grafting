@@ -542,6 +542,7 @@ def get_experiment_timestamp_dir(
     patch_description,
     dataset_name,
     timestamp,
+    patch_lm_head,
     smoke_test,
 ):
     if both_directions_checkpoint is None:
@@ -556,14 +557,19 @@ def get_experiment_timestamp_dir(
     checkpoint_name = (
         f"{both_directions_parent}_{both_directions_checkpoint}_{timestamp}"
     )
-    timestamp_dir = checkpoint_name + "_smoke_test" if smoke_test else checkpoint_name
+
+    # TODO: Not sure if this is the right dir setup for smoke tests, revisit
+    patch_lm_head = "lm_head" + "_" + patch_lm_head
+    patch_lm_head = f"{patch_lm_head}_smoke_test" if smoke_test else patch_lm_head
+
     return (
         EXPERIMENTS_DIR
+        / patch_lm_head
         / dataset_name
         / model_name
         / patch_direction
         / patch_description
-        / timestamp_dir
+        / checkpoint_name
     )
 
 
@@ -576,6 +582,8 @@ def main(cfg):
         / cfg.paths.dataset_name
     )
     pretrained_model_name = cfg.model.pretrained
+
+    patch_lm_head = cfg.inference_config.patch_lm_head
 
     # Load best saved checkpoint if not specified
     if cfg.paths.both_directions_checkpoint is not None:
@@ -617,6 +625,7 @@ def main(cfg):
         patch_description,
         cfg.paths.dataset_name,
         cfg.timestamp,
+        patch_lm_head,
         smoke_test,
     )
     experiment_timestamp_dir.mkdir(parents=True, exist_ok=True)
@@ -631,26 +640,29 @@ def main(cfg):
     else:
         hyperparams_dir = "no_patching"
 
-    # Load models
-    pretrained = MODEL_TO_HFID[cfg.model.pretrained]
-    llm_sft, _, _ = model_factory(str(both_directions_path))
-    llm_pretrained, tokenizer, _ = model_factory(pretrained)
-
     if cfg.model.patch_direction == "sft2pre":
+        pretrained = MODEL_TO_HFID[cfg.model.pretrained]
+        llm_sft, _, _ = model_factory(str(both_directions_path))
+        llm_pretrained, tokenizer, _ = model_factory(pretrained)
+
         LOGGER.info(f"Loading donor model from {both_directions_path}")
         llm_donor_base = llm_sft
         LOGGER.info(f"Loading recipient model from {pretrained}")
         llm_recipient_base = llm_pretrained
     elif cfg.model.patch_direction == "pre2sft":
+        pretrained = MODEL_TO_HFID[cfg.model.pretrained]
+        llm_sft, _, _ = model_factory(str(both_directions_path))
+        llm_pretrained, tokenizer, _ = model_factory(pretrained)
+
         LOGGER.info(f"Loading donor model from {pretrained}")
         llm_donor_base = llm_pretrained
         LOGGER.info(f"Loading recipient model from {both_directions_path}")
         llm_recipient_base = llm_sft
+    # TODO: This setup is not great and will need to be fixed for these experiments
     elif cfg.model.patch_direction == "both2one":
         LOGGER.info(f"Loading donor model from {both_directions_path}")
         llm_donor_base = llm_sft
         LOGGER.info(f"Loading recipient model from {one_direction_path}")
-        # TODO: this won't work for olmo...
         llm_recipient_base = AutoModelForCausalLM.from_pretrained(
             one_direction_path
         ).to(DEVICE)
@@ -682,6 +694,8 @@ def main(cfg):
 
         test_sentence_template = test_template.test_sentence_template
         test_preposition = test_template.preposition
+        test_relation = test_template.relation
+        test_relation_preposition = test_template.relation_preposition
 
         # Create nested directory for results
         output_dir = experiment_timestamp_dir / template_name / hyperparams_dir
@@ -689,13 +703,11 @@ def main(cfg):
 
         log_patches = True
 
-        # TODO: Fix the patch_lm_head logic to allow choosing
-        # Handle lm_head and embeddings patching (even if missing from patch config)
-        patch_lm_head = getattr(cfg.patch_config, "patch_lm_head", False)
         results = []
         for ex in tqdm(metadata[:limit]):
-            # Hacky way to handle preposition - add directly to example
             ex["preposition"] = test_preposition
+            ex["relation"] = test_relation
+            ex["relation_preposition"] = test_relation_preposition
             inputs = get_inputs(ex, test_sentence_template, tokenizer)
 
             if cfg.patching_flag:
@@ -714,7 +726,6 @@ def main(cfg):
                     llm_recipient_base,
                     model_config,
                     tokenizer,
-                    patch_lm_head=patch_lm_head,
                     **vars(cfg.inference_config),
                     log_patches=log_patches,
                 )

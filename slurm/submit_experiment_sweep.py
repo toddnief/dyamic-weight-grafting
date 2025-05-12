@@ -7,8 +7,9 @@ timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
 smoke_test = "false"  # Note: use "true" or "false"
 single_run = True  # Use booleans here
 
-# models = ["olmo", "llama3"]
+
 models = ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
+# models = ["gemma"]
 
 datasets = [
     # {"name": "fake_movies_fake_actors", "dir": "2025-05-03_21-10-38"},
@@ -25,7 +26,7 @@ model_dirs = {
         "fake_movies_real_actors": "all_2025-05-04_10-30-33",
     },
     "llama3": {
-        "fake_movies_fake_actors": "all_2025-05-04_10-30-33", # TODO; Updated when model is trained
+        "fake_movies_fake_actors": "/all_2025-05-11_18-17-16",
         "fake_movies_real_actors": "all_2025-05-07_21-51-20",
     },
     "olmo": {
@@ -33,7 +34,7 @@ model_dirs = {
         "fake_movies_real_actors": "all_2025-05-06_18-10-52/checkpoint-35200",
     },
     "pythia-2.8b": {
-        "fake_movies_fake_actors": "all_2025-05-04_10-30-33", # TODO: Update when model is trained
+        "fake_movies_fake_actors": "all_2025-05-11_18-17-14/checkpoint-26400",
         "fake_movies_real_actors": "all_2025-05-08_12-10-29/checkpoint-26400",
     },
     "gpt2-xl": {
@@ -43,25 +44,44 @@ model_dirs = {
 }
 
 patch_configs = [
+    # BASELINE PATCH
     "no_patching.yaml",
+    # FE + LT
     "fe.yaml",
     "lt.yaml",
     "fe_lt.yaml",
+    # RELATION PATCHES
+    "r.yaml",
+    "rp.yaml",
+    "r_rp.yaml",
+    "r_rp_lt.yaml",
+    # COMPLEMENT PATCHES
     "fe_lt_complement.yaml",
     "not_lt.yaml",
+    # MOVIE PATCHES
     "m.yaml",
     "fe_m.yaml",
     "fe_m_lt.yaml",
     "m_lt.yaml",
     "not_fe_m.yaml",
     "not_fe_m_lt.yaml",
-    "fe_m_p_lt.yaml",
-    "fe_m_p.yaml",
+    # "fe_m_p_lt.yaml",
+    # "fe_m_p.yaml",
 ]
+
+lm_head_configs = ["always", "never", "last_token"]
+lm_head_configs = ["always"]
 
 
 def create_command(
-    model, patch, direction, dataset_name, dataset_dir, model_dir, single_run=False
+    model,
+    patch,
+    direction,
+    dataset_name,
+    dataset_dir,
+    model_dir,
+    lm_head_config,
+    single_run=False,
 ):
     cmd = [
         "make",
@@ -74,23 +94,16 @@ def create_command(
         f"DATASET_DIR={dataset_dir}",
         f"MODEL_DIR={model_dir}",
         f"DIRECTION={direction}",
+        f"LM_HEAD_CONFIG={lm_head_config}",
     ]
     if single_run:
         cmd.append("SINGLE_RUN=0")
     return cmd
 
 
-for model, dataset, patch in itertools.product(models, datasets, patch_configs):
-    if (model == "pythia-2.8b" or model == "llama3") and dataset[
-        "name"
-    ] == "fake_movies_fake_actors":
-        continue
-
-    if patch == "no_patch.yaml":
-        direction = "pre2sft"
-    else:
-        direction = "sft2pre"
-
+for model, dataset, patch, lm_head_config in itertools.product(
+    models, datasets, patch_configs, lm_head_configs
+):
     dataset_name = dataset["name"]
     dataset_dir = dataset["dir"]
     model_dir = model_dirs[model][dataset_name]
@@ -98,14 +111,28 @@ for model, dataset, patch in itertools.product(models, datasets, patch_configs):
     if patch == "no_patching.yaml":
         for direction in ["pre2sft", "sft2pre"]:
             cmd = create_command(
-                model, patch, direction, dataset_name, dataset_dir, model_dir, single_run
+                model,
+                patch,
+                direction,
+                dataset_name,
+                dataset_dir,
+                model_dir,
+                lm_head_config,
+                single_run,
             )
             print("Running:", " ".join(cmd))
             subprocess.run(cmd)
     else:
         direction = "sft2pre"
         cmd = create_command(
-            model, patch, direction, dataset_name, dataset_dir, model_dir, single_run
+            model,
+            patch,
+            direction,
+            dataset_name,
+            dataset_dir,
+            model_dir,
+            lm_head_config,
+            single_run,
         )
         print("Running:", " ".join(cmd))
         subprocess.run(cmd)

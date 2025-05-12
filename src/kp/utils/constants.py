@@ -39,6 +39,7 @@ ACTOR_NAMES_PATH = TEMPLATES_DIR / "fake_movies_real_actors" / "real_actors.json
 
 EXPERIMENTS_DIR = ARTIFACTS_DIR / "experiments"
 TRAINED_MODELS_DIR = ARTIFACTS_DIR / "trained_models"
+FIGURES_DIR = ARTIFACTS_DIR / "figures"
 
 # Set up API keys
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")

@@ -1,8 +1,12 @@
+import datetime
 import json
 from collections import defaultdict
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
+
+from kp.utils.constants import FIGURES_DIR
 
 
 def find_results_files(base_dir: Path, allow_smoke_test: bool = False):
@@ -34,7 +38,7 @@ def parse_path(results_file_path: Path, base_dir: Path):
     """
     Parses the file path to extract experiment metadata.
     Expected path structure relative to base_dir:
-    dataset/model/patch_direction/patch_type/run_id/sentence_id/dropout_rate/results.json
+    lm_head_setting/dataset/model/patch_direction/patch_type/run_id/sentence_id/dropout_rate/results.json
     """
     # Ensure both are Path objects
     if not isinstance(results_file_path, Path):
@@ -52,8 +56,9 @@ def parse_path(results_file_path: Path, base_dir: Path):
         relative_path = results_file_path.relative_to(base_dir)
         components = list(relative_path.parts)
 
-        if len(components) == 8 and components[-1] == "results.json":
+        if len(components) == 9 and components[-1] == "results.json":
             (
+                lm_head_setting,
                 dataset,
                 model,
                 patch_direction,
@@ -65,6 +70,7 @@ def parse_path(results_file_path: Path, base_dir: Path):
             ) = components
 
             return {
+                "lm_head_setting": lm_head_setting,
                 "dataset": dataset,
                 "model": model,
                 "patch_direction": patch_direction,
@@ -169,9 +175,11 @@ def calculate_metrics_from_file(results_json_path, top_k=5):
 def organize_results(all_results_files, base_dir):
     """
     Organizes results into a nested dictionary:
-    top_level[dataset][model][sentence][patch] = metrics_dict
+    top_level[dataset][lm_head_setting][model][sentence][patch] = metrics_dict
     """
-    organized_data = defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
+    organized_data = defaultdict(
+        lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
+    )
 
     parsed_files_count = 0
     metrics_calculated_count = 0
@@ -193,6 +201,7 @@ def organize_results(all_results_files, base_dir):
         metrics_calculated_count += 1
 
         dataset = parsed_info["dataset"]
+        lm_head_setting = parsed_info["lm_head_setting"]
         model = parsed_info["model"]  # Changed to 'model'
         sentence_id = parsed_info["sentence_id"]
         patch_type = parsed_info["patch_type"]
@@ -203,7 +212,9 @@ def organize_results(all_results_files, base_dir):
             elif "pre2sft" in file_path.parts:
                 patch_type = "no_patching_pre2sft"
 
-        organized_data[dataset][model][sentence_id][patch_type] = metrics
+        organized_data[dataset][lm_head_setting][model][sentence_id][patch_type] = (
+            metrics
+        )
 
     print(f"Attempted to parse paths for {len(all_results_files)} files.")
     print(f"Successfully parsed path metadata for {parsed_files_count} files.")
@@ -216,7 +227,7 @@ def organize_results(all_results_files, base_dir):
     return organized_data
 
 
-def plot_metric(organized_data, metric_key):
+def plot_metric(organized_data, metric_key, save=False, save_dir=FIGURES_DIR):
     """
     Generates bar plots for a specified metric across patch configurations,
     grouped by dataset, sentence, and model (in that order).
@@ -242,63 +253,76 @@ def plot_metric(organized_data, metric_key):
 
     cfg = metric_config[metric_key]
 
-    import matplotlib.pyplot as plt
-    import numpy as np
-
     # Dataset → Sentence → Model
-    for dataset_name, models_data in organized_data.items():
-        sentences = sorted(
-            {s for m in models_data.values() for s in m}
-        )  # all sentences present
-        for sentence_id in sentences:
-            for model_name, sentences_data in models_data.items():
-                if sentence_id not in sentences_data:
-                    continue
-                patch_config_results = sentences_data[sentence_id]
+    for dataset_name, lm_head_settings in organized_data.items():
+        for lm_head_setting, models_data in lm_head_settings.items():
+            sentences = sorted(
+                {s for m in models_data.values() for s in m}
+            )  # all sentences present
+            for sentence_id in sentences:
+                for model_name, sentences_data in models_data.items():
+                    if sentence_id not in sentences_data:
+                        continue
+                    patch_config_results = sentences_data[sentence_id]
 
-                if not patch_config_results:
-                    print(
-                        f"Skipping {dataset_name} / {sentence_id} / {model_name}: No patch data."
+                    if not patch_config_results:
+                        print(
+                            f"Skipping {dataset_name} / {sentence_id} / {model_name}: No patch data."
+                        )
+                        continue
+
+                    patch_names, metric_values = [], []
+                    for patch_name, metrics in sorted(patch_config_results.items()):
+                        if metric_key in metrics and not np.isnan(metrics[metric_key]):
+                            patch_names.append(patch_name)
+                            metric_values.append(metrics[metric_key])
+
+                    if not patch_names:
+                        print(
+                            f"No valid data for {metric_key} in {dataset_name} / {sentence_id} / {model_name}"
+                        )
+                        continue
+
+                    plt.figure(figsize=(max(10, len(patch_names) * 0.8), 7))
+                    colors = plt.cm.get_cmap(cfg["color"])(
+                        np.linspace(0, 1, len(patch_names))
                     )
-                    continue
-
-                patch_names, metric_values = [], []
-                for patch_name, metrics in sorted(patch_config_results.items()):
-                    if metric_key in metrics and not np.isnan(metrics[metric_key]):
-                        patch_names.append(patch_name)
-                        metric_values.append(metrics[metric_key])
-
-                if not patch_names:
-                    print(
-                        f"No valid data for {metric_key} in {dataset_name} / {sentence_id} / {model_name}"
+                    bars = plt.bar(patch_names, metric_values, color=colors)
+                    title = (
+                        f"{cfg['label']}\n"
+                        f"Dataset: {dataset_name} | Sentence: {sentence_id} | Model: {model_name}"
                     )
-                    continue
+                    title += f" | LM Head Setting: {lm_head_setting}"
 
-                plt.figure(figsize=(max(10, len(patch_names) * 0.8), 7))
-                colors = plt.cm.get_cmap(cfg["color"])(
-                    np.linspace(0, 1, len(patch_names))
-                )
-                bars = plt.bar(patch_names, metric_values, color=colors)
-
-                plt.title(
-                    f"{cfg['label']}\nDataset: {dataset_name} | Sentence: {sentence_id} | Model: {model_name}",
-                    fontsize=14,
-                )
-                plt.xlabel("Patch Configuration", fontsize=12)
-                plt.ylabel(cfg["label"], fontsize=12)
-                plt.xticks(rotation=45, ha="right")
-                plt.grid(axis="y", linestyle="--", alpha=0.7)
-
-                for bar in bars:
-                    yval = bar.get_height()
-                    plt.text(
-                        bar.get_x() + bar.get_width() / 2,
-                        yval,
-                        f"{yval:.3f}",
-                        ha="center",
-                        va="bottom",
-                        fontsize=8,
+                    plt.title(
+                        title,
+                        fontsize=14,
                     )
+                    plt.xlabel("Patch Configuration", fontsize=12)
+                    plt.ylabel(cfg["label"], fontsize=12)
+                    plt.xticks(rotation=45, ha="right")
+                    plt.grid(axis="y", linestyle="--", alpha=0.7)
 
-                plt.tight_layout()
-                plt.show()
+                    for bar in bars:
+                        yval = bar.get_height()
+                        plt.text(
+                            bar.get_x() + bar.get_width() / 2,
+                            yval,
+                            f"{yval:.3f}",
+                            ha="center",
+                            va="bottom",
+                            fontsize=8,
+                        )
+
+                    plt.tight_layout()
+
+                    if save:
+                        stamp = datetime.datetime.now().strftime("%Y%m%d‑%H%M%S")
+                        fname = (
+                            f"{metric_key}_{dataset_name}_sent{sentence_id}_"
+                            f"{model_name}" + f"_{lm_head_setting}" + f"_{stamp}.png"
+                        )
+                        plt.savefig(save_dir / fname, dpi=300, bbox_inches="tight")
+
+                    plt.show()
+                    plt.close()
