@@ -542,6 +542,8 @@ def get_experiment_timestamp_dir(
 ):
     if both_directions_checkpoint is None:
         both_directions_checkpoint = "best_saved_checkpoint"
+    if "/" in both_directions_parent:
+        both_directions_parent, both_directions_checkpoint = both_directions_parent.split("/")
 
     # Note: Collapse slashes in parent directory name for consistent experiment dir structure
     both_directions_parent = both_directions_parent.replace("/", "_")
