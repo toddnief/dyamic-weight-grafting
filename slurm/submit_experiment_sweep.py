@@ -8,7 +8,8 @@ smoke_test = "true"  # Note: use "true" or "false"
 single_run = True  # Use booleans here
 
 # models = ["olmo", "llama3"]
-models = ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]  # remove olmo for now
+# models = ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
+models = ["llama3", "pythia-2.8b"]
 datasets = [
     # {"name": "fake_movies_fake_actors", "dir": "2025-05-03_21-10-38"},
     {"name": "fake_movies_real_actors", "dir": "2025-05-02_16-23-04"},
@@ -44,7 +45,7 @@ model_dirs = {
 patch_configs = [
     "no_patching.yaml",
     "fe.yaml",
-    # "lt.yaml",
+    "lt.yaml",
     # "fe_lt.yaml",
     # "fe_lt_complement.yaml",
     # "not_lt.yaml",
