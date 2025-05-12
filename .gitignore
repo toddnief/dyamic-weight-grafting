@@ -2,6 +2,7 @@ logs/
 results/
 data/
 config/
+notebooks/archive/
 __pycache__/
 data_templates/archive/
 v1/

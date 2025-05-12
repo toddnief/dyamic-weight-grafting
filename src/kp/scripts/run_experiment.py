@@ -420,7 +420,7 @@ def run_patched_inference(
     llm_recipient_base,
     model_config,
     tokenizer,
-    patch_lm_head=False,
+    patch_lm_head="never",  # choices: never, always, last_token
     dropout_rate=0.0,
     dropout_unit="layer",  # choices: layer, matrix
     dropout_strategy="count",  # choices: count, random
@@ -432,8 +432,12 @@ def run_patched_inference(
     llm_recipient = copy.deepcopy(llm_recipient_base)
     dropout_layers = None
 
-    # TODO: for now, setting this up so that we patch lm_head only if last token is patched
-    patch_lm_head = False
+    if patch_lm_head == "never" or patch_lm_head == "last_token":
+        patch_lm_head = False
+    elif patch_lm_head == "always":
+        patch_lm_head = True
+    else:
+        raise ValueError(f"Invalid patch_lm_head value: {patch_lm_head}")
 
     if log_patches:
         LOGGER.info(f"inputs: {inputs}")
@@ -492,7 +496,7 @@ def run_patched_inference(
                         )
 
             # If last index is patched, set patch_lm_head to True
-            if idx == len(inputs["input_ids"][0]) - 1:
+            if idx == len(inputs["input_ids"][0]) - 1 and patch_lm_head == "last_token":
                 patch_lm_head = True
         elif log_patches:
             LOGGER.info(f"No patch at token idx {idx}")
@@ -526,7 +530,7 @@ def run_patched_inference(
         logits = patched_output.logits
 
     probs = torch.softmax(logits[0, -1], dim=-1)
-    # TODO: dropout layers is only the last token, fix this if we need it
+    # TODO: dropout layers is only the last token, fix this if we actually need it
     return probs, {"layers": dropout_layers}
 
 
@@ -543,7 +547,9 @@ def get_experiment_timestamp_dir(
     if both_directions_checkpoint is None:
         both_directions_checkpoint = "best_saved_checkpoint"
     if "/" in both_directions_parent:
-        both_directions_parent, both_directions_checkpoint = both_directions_parent.split("/")
+        both_directions_parent, both_directions_checkpoint = (
+            both_directions_parent.split("/")
+        )
 
     # Note: Collapse slashes in parent directory name for consistent experiment dir structure
     both_directions_parent = both_directions_parent.replace("/", "_")
@@ -658,23 +664,20 @@ def main(cfg):
 
     movie_patches = set(
         [
-        "m.yaml",
-        "fe_m.yaml",
-        "fe_m_lt.yaml",
-        "m_lt.yaml",
-        "not_fe_m.yaml",
-        "not_fe_m_lt.yaml",
-        "fe_m_p_lt.yaml",
-        "fe_m_p.yaml",
+            "m.yaml",
+            "fe_m.yaml",
+            "fe_m_lt.yaml",
+            "m_lt.yaml",
+            "not_fe_m.yaml",
+            "not_fe_m_lt.yaml",
+            "fe_m_p_lt.yaml",
+            "fe_m_p.yaml",
         ]
     )
 
     for template_name, test_template in vars(cfg.test_templates).items():
         # TODO: hack to only run movie patches for sentence_3
-        if (
-            template_name != "sentence_3"
-            and cfg.patch_config_filename in movie_patches
-        ):
+        if template_name != "sentence_3" and cfg.patch_config_filename in movie_patches:
             continue
 
         test_sentence_template = test_template.test_sentence_template
