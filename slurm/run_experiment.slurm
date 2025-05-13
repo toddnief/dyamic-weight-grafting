@@ -4,7 +4,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --constraint="a100|h100"
-#SBATCH --time=02:00:00
+#SBATCH --time=03:00:00
 #SBATCH --array=0-5 # Default; overridden dynamically by Makefile if SINGLE_RUN is set
 
 # Note: Some models require this to be set to load from Huggingface
@@ -43,6 +43,9 @@ else
 fi
 if [ "$OVERRIDE_LAYERS" = "1" ]; then
     OVERRIDES+=("inference_config.override_layers=1")
+fi
+if [ -n "$EXPERIMENTS_DIR_ADDENDUM" ]; then
+    OVERRIDES+=("paths.experiments_dir_addendum=$EXPERIMENTS_DIR_ADDENDUM")
 fi
 OVERRIDES+=("inference_config.dropout_rate=$DROPOUT")
 

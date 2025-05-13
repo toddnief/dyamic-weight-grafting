@@ -322,9 +322,46 @@ def get_inputs(ex, test_sentence_template, tokenizer):
     inputs = tokenizer(test_sentence, return_tensors="pt").to(DEVICE)
     return inputs
 
+# Setup order and display names for patch configs
+PATCH_ORDER = {
+    "baseline": 0,
+    "single_token": 1,
+    "multi_token": 2,
+    "complement": 3,
+}
+
+
+DISPLAY_NAMES = {
+    "no_patching_pre2sft": "SFT",
+    "no_patching_sft2pre": "PRE",
+    "fe": "FE",
+    "lt": "LT",
+    "fe_lt": "FE+LT",
+    "r": "R",
+    "fe_r": "FE+R",
+    "r_lt": "R+LT",
+    "fe_r_lt": "FE+R+LT",
+    "fe_lt_complement": "(FE+LT)^C",
+    "not_lt": "NOT LT",
+    "m": "M",
+    "fe_m": "FE+M",
+    "fe_m_lt": "FE+M+LT",
+    "m_lt": "M+LT",
+    "not_fe_m": "NOT FE+M",
+    "not_fe_m_lt": "NOT FE+M+LT",
+}
+
+DEFAULT_ORDER = 99
+
 
 def get_patches(
-    ex, patch_config, n_layers, tokenizer, input_ids, test_sentence_template, override_layers=False
+    ex,
+    patch_config,
+    n_layers,
+    tokenizer,
+    input_ids,
+    test_sentence_template,
+    override_layers=False,
 ):
     formatter = string.Formatter()
     test_sentence_fields = [
@@ -376,9 +413,8 @@ def get_patches(
         targets = PatchTargets(**vars(patch_spec.targets))
 
         # TODO: Hacky override
-        # If patch is first_actor or elation, patch the first half of the layers
+        # If patch is first_actor or relation, patch the first half of the layers
         # if patch is last_token, patch the last half of the layers
-        # if patch is relation, patch the middle half of the layers
         if override_layers and patch_name in ["first_actor", "relation"]:
             layers_spec = ["first_quarter", "second_quarter"]
         else:
@@ -436,7 +472,7 @@ def run_patched_inference(
     dropout_unit="layer",  # choices: layer, matrix
     dropout_strategy="count",  # choices: count, random
     log_patches=False,
-    smoke_test=False,
+    **kwargs,
 ):
     # Initialize cache and models before loop
     kv_cache = None
@@ -555,6 +591,7 @@ def get_experiment_timestamp_dir(
     timestamp,
     patch_lm_head,
     smoke_test,
+    base_experiments_dir=EXPERIMENTS_DIR,
 ):
     if both_directions_checkpoint is None:
         both_directions_checkpoint = "best_saved_checkpoint"
@@ -574,7 +611,7 @@ def get_experiment_timestamp_dir(
     patch_lm_head = f"{patch_lm_head}_smoke_test" if smoke_test else patch_lm_head
 
     return (
-        EXPERIMENTS_DIR
+        base_experiments_dir
         / patch_lm_head
         / dataset_name
         / model_name
@@ -628,6 +665,12 @@ def main(cfg):
         / "metadata"
         / "metadata.jsonl"
     )
+
+    if cfg.paths.experiments_dir_addendum:
+        base_experiments_dir = EXPERIMENTS_DIR / cfg.paths.experiments_dir_addendum
+    else:
+        base_experiments_dir = EXPERIMENTS_DIR
+
     experiment_timestamp_dir = get_experiment_timestamp_dir(
         pretrained_model_name,
         cfg.paths.both_directions_parent,
@@ -638,6 +681,7 @@ def main(cfg):
         cfg.timestamp,
         patch_lm_head,
         smoke_test,
+        base_experiments_dir=base_experiments_dir,
     )
     experiment_timestamp_dir.mkdir(parents=True, exist_ok=True)
     LOGGER.info(

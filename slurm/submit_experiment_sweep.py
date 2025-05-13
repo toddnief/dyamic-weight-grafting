@@ -4,13 +4,13 @@ import time
 
 timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
 
-smoke_test = True
+smoke_test = "false"  # Note: use "true" or "false" for Makefile / slurm
 single_run = True  # Use booleans here
-override_layers = True
+override_layers = False
 
 
-# models = ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
-models = ["gemma"]
+models = ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
+models_smoke_test = ["gemma"]
 
 datasets = [
     # {"name": "fake_movies_fake_actors", "dir": "2025-05-03_21-10-38"},
@@ -27,7 +27,7 @@ model_dirs = {
         "fake_movies_real_actors": "all_2025-05-04_10-30-33",
     },
     "llama3": {
-        "fake_movies_fake_actors": "/all_2025-05-11_18-17-16",
+        "fake_movies_fake_actors": "all_2025-05-11_18-17-16",
         "fake_movies_real_actors": "all_2025-05-07_21-51-20",
     },
     "olmo": {
@@ -74,8 +74,25 @@ patch_configs = [
     # "rp.yaml",
 ]
 
-lm_head_configs = ["always", "never", "last_token"]
-lm_head_configs = ["always"]
+patch_configs_smoke_test = [
+    # BASELINE PATCH
+    "no_patching.yaml",
+    # FE + LT
+    "fe.yaml",
+]
+
+# lm_head_configs = ["always", "never", "last_token"]
+lm_head_configs = ["never"]
+lm_head_configs_smoke_test = ["always"]
+
+if smoke_test == "true":
+    models = models_smoke_test
+    patch_configs = patch_configs_smoke_test
+    lm_head_configs = lm_head_configs_smoke_test
+
+# TODO: Hacky...
+experiments_dir_addendum = "selective_layers" if override_layers else None
+
 
 def create_command(
     model,
@@ -87,6 +104,7 @@ def create_command(
     lm_head_config,
     single_run=False,
     override_layers=False,
+    experiments_dir_addendum=None,
 ):
     cmd = [
         "make",
@@ -101,6 +119,8 @@ def create_command(
         f"DIRECTION={direction}",
         f"LM_HEAD_CONFIG={lm_head_config}",
     ]
+    if experiments_dir_addendum:
+        cmd.append(f"EXPERIMENTS_DIR_ADDENDUM={experiments_dir_addendum}")
     # Note: This passes a dropout index to the script - 0 corresponds to no dropout
     if single_run:
         cmd.append("SINGLE_RUN=0")
@@ -129,6 +149,7 @@ for model, dataset, patch, lm_head_config in itertools.product(
                 lm_head_config,
                 single_run,
                 override_layers,
+                experiments_dir_addendum,
             )
             print("Running:", " ".join(cmd))
             subprocess.run(cmd)
@@ -144,6 +165,7 @@ for model, dataset, patch, lm_head_config in itertools.product(
             lm_head_config,
             single_run,
             override_layers,
+            experiments_dir_addendum,
         )
         print("Running:", " ".join(cmd))
         subprocess.run(cmd)

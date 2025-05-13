@@ -1,37 +1,32 @@
-import datetime
+from datetime import datetime
 import json
 from collections import defaultdict
 from pathlib import Path
+import re
 
 import matplotlib.pyplot as plt
 import numpy as np
 
 from kp.utils.constants import FIGURES_DIR
 
-
-def find_results_files(base_dir: Path, allow_smoke_test: bool = False):
+def find_results_files(base_dir: Path | str, allow_smoke_test: bool = False):
     """
-    Recursively finds all 'results.json' files under the base_dir.
+    Collect every results.json under `base_dir`, applying only the directory
+    filters (archive / bug / skip / smoke_test)
     """
-    if not isinstance(base_dir, Path):
-        base_dir = Path(base_dir)
+    base_dir = Path(base_dir)
 
-    results_files = []
-    print(f"Searching for 'results.json' files in: {base_dir}")
-
+    results = []
     for path in base_dir.rglob("results.json"):
-        # Use `.parts` to check for subdirectories cleanly
-        if any("archive" in part for part in path.parts):
+        parts = path.parts
+        if any(sub in part for part in parts for sub in ("archive", "bug", "skip")):
             continue
+        if not allow_smoke_test and any("smoke_test" in p for p in parts):
+            continue
+        results.append(path)
 
-        if allow_smoke_test:
-            results_files.append(path)
-        else:
-            if not any("smoke_test" in part for part in path.parts):
-                results_files.append(path)
-
-    print(f"Found {len(results_files)} 'results.json' files.")
-    return results_files
+    print(f"Found {len(results)} 'results.json' files.")
+    return results
 
 
 def parse_path(results_file_path: Path, base_dir: Path):
@@ -171,63 +166,127 @@ def calculate_metrics_from_file(results_json_path, top_k=5):
         "mean_target_prob": mean_prob,
     }
 
+from collections import defaultdict
+from pathlib import Path
+import numpy as np
 
-def organize_results(all_results_files, base_dir):
+# pre‑compile for speed
+_TS_RE = re.compile(r"\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}")
+
+def parse_timestamp(dir_name: str):
     """
-    Organizes results into a nested dictionary:
-    top_level[dataset][lm_head_setting][model][sentence][patch] = metrics_dict
+    Extract the latest timestamp from a directory / run‑id string.
+    Expected pattern: YYYY-MM-DD_HH-MM-SS (may appear multiple times).
+    Returns a datetime object or None if no timestamp is found.
     """
-    organized_data = defaultdict(
+    matches = _TS_RE.findall(dir_name)
+    if not matches:
+        return None
+    return max(datetime.strptime(ts, "%Y-%m-%d_%H-%M-%S") for ts in matches)
+
+def organize_results(all_results_files, base_dir: Path):
+    """
+    Build nested dict:
+        organized[dataset][lm_head_setting][model][sentence_id][patch] = metrics_dict
+    and keep only the *newest* run for every (dataset, lm_head, model, sentence, patch) combo.
+    """
+    organized = defaultdict(
         lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(dict)))
     )
 
-    parsed_files_count = 0
-    metrics_calculated_count = 0
+    parsed_ok, metrics_ok = 0, 0
 
-    for file_path in all_results_files:
-        parsed_info = parse_path(file_path, base_dir)
-        if not parsed_info:
-            # This file path didn't match the expected structure or couldn't be parsed.
+    for fp in all_results_files:
+        info = parse_path(fp, base_dir)
+        if not info:
             continue
+        parsed_ok += 1
 
-        parsed_files_count += 1
-
-        metrics = calculate_metrics_from_file(file_path)
+        metrics = calculate_metrics_from_file(fp)
         if metrics is None:
-            # Error reading or parsing the JSON content of this file.
-            print(f"Skipping file due to content read/parse error: {file_path}")
+            print(f"Skipping unreadable {fp}")
             continue
+        metrics_ok += 1
 
-        metrics_calculated_count += 1
+        dset = info["dataset"]
+        lm_head = info["lm_head_setting"]
+        model = info["model"]
+        sent  = info["sentence_id"]
+        patch = info["patch_type"]
 
-        dataset = parsed_info["dataset"]
-        lm_head_setting = parsed_info["lm_head_setting"]
-        model = parsed_info["model"]  # Changed to 'model'
-        sentence_id = parsed_info["sentence_id"]
-        patch_type = parsed_info["patch_type"]
+        if patch == "no_patching":
+            patch = (
+                "no_patching_sft2pre" if "sft2pre" in fp.parts else
+                "no_patching_pre2sft" if "pre2sft" in fp.parts else
+                patch
+            )
 
-        if patch_type == "no_patching":
-            if "sft2pre" in file_path.parts:
-                patch_type = "no_patching_sft2pre"
-            elif "pre2sft" in file_path.parts:
-                patch_type = "no_patching_pre2sft"
+        ts = parse_timestamp(info["run_id"])  # newest run wins
+        slot = organized[dset][lm_head][model][sent]
 
-        organized_data[dataset][lm_head_setting][model][sentence_id][patch_type] = (
-            metrics
-        )
+        if (
+            patch not in slot or
+            ts and (slot[patch]["timestamp"] is None or ts > slot[patch]["timestamp"])
+        ):
+            slot[patch] = {"metrics": metrics, "timestamp": ts}
 
-    print(f"Attempted to parse paths for {len(all_results_files)} files.")
-    print(f"Successfully parsed path metadata for {parsed_files_count} files.")
-    print(f"Successfully calculated metrics for {metrics_calculated_count} files.")
-    print(f"Organized data into {len(organized_data)} datasets.")
+    for d in organized.values():
+        for l in d.values():
+            for m in l.values():
+                for s in m.values():
+                    for p in list(s.keys()):
+                        s[p] = s[p]["metrics"]
 
-    for dataset_name, models in organized_data.items():
-        print(f"  Dataset '{dataset_name}' has {len(models)} model configurations.")
+    print(f"Attempted to parse {len(all_results_files)} files.")
+    print(f"Successfully parsed {parsed_ok} paths and calculated metrics for {metrics_ok}.")
+    print(f"Organized data into {len(organized)} datasets.")
+    return organized
 
-    return organized_data
 
+# Setup order and display names for patch configs
+PATCH_MAPPING = {
+    "no_patching_pre2sft": ("baseline", "SFT"),
+    "no_patching_sft2pre": ("baseline", "PRE"),
+    "fe": ("single_token", "FE"),
+    "lt": ("single_token", "LT"),
+    "fe_lt": ("multi_token", "FE+LT"),
+    "r": ("single_token", "R"),
+    "fe_r": ("multi_token", "FE+R"),
+    "r_lt": ("multi_token", "R+LT"),
+    "fe_r_lt": ("multi_token", "FE+R+LT"),
+    "fe_lt_complement": ("complement", "(FE+LT)^C"),
+    "not_lt": ("complement", "NOT LT"),
+    "m": ("single_token", "M"),
+    "fe_m": ("multi_token", "FE+M"),
+    "fe_m_lt": ("multi_token", "FE+M+LT"),
+    "m_lt": ("multi_token", "M+LT"),
+    "not_fe_m": ("complement", "NOT FE+M"),
+    "not_fe_m_lt": ("complement", "NOT FE+M+LT"),
+}
 
-def plot_metric(organized_data, metric_key, save=False, save_dir=FIGURES_DIR):
+# Define the order for the buckets
+BUCKET_ORDER = {
+    "baseline": 0,
+    "single_token": 1,
+    "multi_token": 2,
+    "complement": 3
+}
+
+# Skip these patch configs
+SKIP_SET = {"r_rp", "r_rp_lt", "rp", "rp_lt"}
+
+DEFAULT_BUCKET = "unknown"
+DEFAULT_ORDER = 99
+
+def get_patch_order_and_name(patch_name):
+    if patch_name in PATCH_MAPPING:
+        bucket, display_name = PATCH_MAPPING[patch_name]
+        order = BUCKET_ORDER.get(bucket, DEFAULT_ORDER)
+        return order, display_name
+    
+    return DEFAULT_ORDER, patch_name
+
+def plot_metric(organized_data, metric_key, layers_setting=None, save=False, save_dir=FIGURES_DIR):
     """
     Generates bar plots for a specified metric across patch configurations,
     grouped by dataset, sentence, and model (in that order).
@@ -272,11 +331,34 @@ def plot_metric(organized_data, metric_key, save=False, save_dir=FIGURES_DIR):
                             f"Skipping {dataset_name} / {sentence_id} / {model_name}: No patch data."
                         )
                         continue
-
+                    
                     patch_names, metric_values = [], []
-                    for patch_name, metrics in sorted(patch_config_results.items()):
+
+                    # Sort first by order bucket, then alphabetically within the bucket
+                    sorted_patches = sorted(
+                        patch_config_results.items(),
+                        key=lambda x: get_patch_order_and_name(x[0])
+                    )
+
+                    # Collect the display names and metric values
+                    seen_display_names = set()
+                    for patch_name, metrics in sorted_patches:
+                        if patch_name in SKIP_SET:
+                            continue
                         if metric_key in metrics and not np.isnan(metrics[metric_key]):
-                            patch_names.append(patch_name)
+                            _, display_name = get_patch_order_and_name(patch_name)
+                            
+                            # Ensure uniqueness by appending index if a duplicate is found
+                            if display_name in seen_display_names:
+                                counter = 1
+                                new_display_name = f"{display_name}_{counter}"
+                                while new_display_name in seen_display_names:
+                                    counter += 1
+                                    new_display_name = f"{display_name}_{counter}"
+                                display_name = new_display_name
+                            
+                            seen_display_names.add(display_name)
+                            patch_names.append(display_name)
                             metric_values.append(metrics[metric_key])
 
                     if not patch_names:
@@ -290,11 +372,53 @@ def plot_metric(organized_data, metric_key, save=False, save_dir=FIGURES_DIR):
                         np.linspace(0, 1, len(patch_names))
                     )
                     bars = plt.bar(patch_names, metric_values, color=colors)
+
+                    # Define title mapping
+                    metric_title_mapping = {
+                        "top_k_accuracy": "Top-5 Accuracy",
+                        "mean_target_prob": "Mean Target Probability",
+                        "mean_target_rank": "Mean Target Rank",
+                    }
+
+                    model_title_mapping = {
+                        "gpt2-xl": "GPT-2 XL",
+                        "gemma": "Gemma-1.1-2B-IT",
+                        "olmo": "OLMo-1B",
+                        "llama3": "Llama-3.2-1B",
+                        "pythia-2.8b": "Pythia-2.8B",
+                        "gpt2": "GPT-2",
+                    }
+
+                    model_sentence_mapping = {
+                        "sentence_1": "Sentence 1",
+                        "sentence_2": "Sentence 2",
+                        "sentence_3": "Sentence 3",
+                    }
+
+                    dataset_title_mapping = {
+                        "fake_movies_real_actors": "Fake Movies, Real Actors",
+                        "fake_movies_fake_actors": "Fake Movies, Fake Actors",
+                    }
+
+                    lm_head_title_mapping = {
+                        "lm_head_always": "LM Head: Always",
+                        "lm_head_never": "LM Head: Never",
+                        "lm_head_last_token": "LM Head: Last Token",
+                    }
+
+                    layers_title_mapping = {
+                        "all_layers": "All Layers",
+                        "selective_layers": "Selective Layers",
+                    }
+
                     title = (
-                        f"{cfg['label']}\n"
-                        f"Dataset: {dataset_name} | Sentence: {sentence_id} | Model: {model_name}"
+                        f"{metric_title_mapping[metric_key]}\n"
+                        f"{model_title_mapping[model_name]}"
+                        f" | {model_sentence_mapping[sentence_id]}"
+                        f" | {dataset_title_mapping[dataset_name]}"
+                        f" | {lm_head_title_mapping[lm_head_setting]}"
+                        f" | {layers_title_mapping[layers_setting]}"
                     )
-                    title += f" | LM Head Setting: {lm_head_setting}"
 
                     plt.title(
                         title,
@@ -302,7 +426,7 @@ def plot_metric(organized_data, metric_key, save=False, save_dir=FIGURES_DIR):
                     )
                     plt.xlabel("Patch Configuration", fontsize=12)
                     plt.ylabel(cfg["label"], fontsize=12)
-                    plt.xticks(rotation=45, ha="right")
+                    plt.xticks(rotation=90, ha="right")
                     plt.grid(axis="y", linestyle="--", alpha=0.7)
 
                     for bar in bars:
