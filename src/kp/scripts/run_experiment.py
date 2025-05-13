@@ -324,7 +324,7 @@ def get_inputs(ex, test_sentence_template, tokenizer):
 
 
 def get_patches(
-    ex, patch_config, n_layers, tokenizer, input_ids, test_sentence_template
+    ex, patch_config, n_layers, tokenizer, input_ids, test_sentence_template, override_layers=False
 ):
     formatter = string.Formatter()
     test_sentence_fields = [
@@ -343,7 +343,6 @@ def get_patches(
         for token_idx in range(len(input_ids[0])):
             patches[token_idx] = Patch(
                 token_idx,
-                # indeces=(token_idx, token_idx + 1),
                 targets=PatchTargets(**vars(patch_spec.targets)),
                 patch_layers=patch_layers,
             )
@@ -375,13 +374,22 @@ def get_patches(
 
         # Extract matrices and layers to patch
         targets = PatchTargets(**vars(patch_spec.targets))
-        patch_layers = parse_layers(getattr(patch_spec, "layers", None), layers_dict)
+
+        # TODO: Hacky override
+        # If patch is first_actor or elation, patch the first half of the layers
+        # if patch is last_token, patch the last half of the layers
+        # if patch is relation, patch the middle half of the layers
+        if override_layers and patch_name in ["first_actor", "relation"]:
+            layers_spec = ["first_quarter", "second_quarter"]
+        else:
+            layers_spec = getattr(patch_spec, "layers", None)
+
+        patch_layers = parse_layers(layers_spec, layers_dict)
 
         # Add patches for each token in span
         for token_idx in range(start_idx, end_idx):
             patches[token_idx] = Patch(
                 token_idx,
-                # indeces=(start_idx, end_idx),
                 targets=targets,
                 patch_layers=patch_layers,
             )
@@ -391,10 +399,13 @@ def get_patches(
         if "token_idx" not in patch_name:
             continue
 
-        patch_layers = parse_layers(getattr(patch_spec, "layers", None), layers_dict)
+        layers_spec = getattr(patch_spec, "layers", None)
 
         for token_idx in patch_spec.values:
             token_idx = int(token_idx)
+
+            if override_layers and token_idx == -1:
+                layers_spec = ["third_quarter", "fourth_quarter"]
 
             if token_idx < 0:  # Handle negative indices
                 token_idx = len(input_ids[0]) + token_idx
@@ -407,7 +418,7 @@ def get_patches(
             patches[token_idx] = Patch(
                 token_idx,
                 targets=PatchTargets(**vars(patch_spec.targets)),
-                patch_layers=patch_layers,
+                patch_layers=parse_layers(layers_spec, layers_dict),
             )
 
     return patches
@@ -718,6 +729,7 @@ def main(cfg):
                     tokenizer,
                     inputs["input_ids"],
                     test_sentence_template,
+                    override_layers=cfg.inference_config.override_layers,
                 )
                 probs, dropout_record = run_patched_inference(
                     inputs,

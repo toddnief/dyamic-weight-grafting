@@ -41,6 +41,9 @@ if [ "$SMOKE_TEST" = "true" ] || [ "$SMOKE_TEST" = "1" ]; then
 else
     OVERRIDES+=("smoke_test=0")
 fi
+if [ "$OVERRIDE_LAYERS" = "1" ]; then
+    OVERRIDES+=("inference_config.override_layers=1")
+fi
 OVERRIDES+=("inference_config.dropout_rate=$DROPOUT")
 
 python src/kp/scripts/run_experiment.py \

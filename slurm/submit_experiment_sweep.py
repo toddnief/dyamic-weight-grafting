@@ -4,12 +4,13 @@ import time
 
 timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
 
-smoke_test = "false"  # Note: use "true" or "false"
+smoke_test = True
 single_run = True  # Use booleans here
+override_layers = True
 
 
-models = ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
-# models = ["gemma"]
+# models = ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
+models = ["gemma"]
 
 datasets = [
     # {"name": "fake_movies_fake_actors", "dir": "2025-05-03_21-10-38"},
@@ -52,9 +53,9 @@ patch_configs = [
     "fe_lt.yaml",
     # RELATION PATCHES
     "r.yaml",
-    "rp.yaml",
-    "r_rp.yaml",
-    "r_rp_lt.yaml",
+    "fe_r.yaml",
+    "r_lt.yaml",
+    "fe_r_lt.yaml",
     # COMPLEMENT PATCHES
     "fe_lt_complement.yaml",
     "not_lt.yaml",
@@ -65,13 +66,16 @@ patch_configs = [
     "m_lt.yaml",
     "not_fe_m.yaml",
     "not_fe_m_lt.yaml",
+    # EXTRA
     # "fe_m_p_lt.yaml",
     # "fe_m_p.yaml",
+    # "r_rp.yaml",
+    # "r_rp_lt.yaml",
+    # "rp.yaml",
 ]
 
 lm_head_configs = ["always", "never", "last_token"]
 lm_head_configs = ["always"]
-
 
 def create_command(
     model,
@@ -82,6 +86,7 @@ def create_command(
     model_dir,
     lm_head_config,
     single_run=False,
+    override_layers=False,
 ):
     cmd = [
         "make",
@@ -96,8 +101,12 @@ def create_command(
         f"DIRECTION={direction}",
         f"LM_HEAD_CONFIG={lm_head_config}",
     ]
+    # Note: This passes a dropout index to the script - 0 corresponds to no dropout
     if single_run:
         cmd.append("SINGLE_RUN=0")
+    # Add override layers boolean
+    if override_layers:
+        cmd.append("OVERRIDE_LAYERS=1")
     return cmd
 
 
@@ -119,6 +128,7 @@ for model, dataset, patch, lm_head_config in itertools.product(
                 model_dir,
                 lm_head_config,
                 single_run,
+                override_layers,
             )
             print("Running:", " ".join(cmd))
             subprocess.run(cmd)
@@ -133,6 +143,7 @@ for model, dataset, patch, lm_head_config in itertools.product(
             model_dir,
             lm_head_config,
             single_run,
+            override_layers,
         )
         print("Running:", " ".join(cmd))
         subprocess.run(cmd)

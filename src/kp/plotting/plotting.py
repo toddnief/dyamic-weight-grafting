@@ -241,6 +241,8 @@ def plot_metric(organized_data, metric_key, save=False, save_dir=FIGURES_DIR):
         print("No data available to plot.")
         return
 
+    save_dir.mkdir(parents=True, exist_ok=True)
+
     metric_config = {
         "top_k_accuracy": {"label": "Top-K Accuracy", "color": "viridis"},
         "mean_target_prob": {"label": "Mean Target Probability", "color": "plasma"},
