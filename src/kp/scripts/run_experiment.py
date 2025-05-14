@@ -305,6 +305,14 @@ def get_layers_dict(n_layers):
     second_quarter_layers = list(range(quarter, 2 * quarter))
     third_quarter_layers = list(range(2 * quarter, 3 * quarter))
     fourth_quarter_layers = list(range(3 * quarter, n_layers))
+    first_eighth_layers = list(range(0, quarter // 2))
+    second_eighth_layers = list(range(quarter // 2, quarter))
+    third_eighth_layers = list(range(2 * quarter, 3 * quarter // 2))
+    fourth_eighth_layers = list(range(3 * quarter // 2, 2 * quarter))
+    fifth_eighth_layers = list(range(2 * quarter, 5 * quarter // 2))
+    sixth_eighth_layers = list(range(5 * quarter // 2, 3 * quarter))
+    seventh_eighth_layers = list(range(3 * quarter // 2, 7 * quarter // 2))
+    eighth_eighth_layers = list(range(7 * quarter // 2, n_layers))
 
     layers_dict = {
         "all": all_layers,
@@ -312,6 +320,12 @@ def get_layers_dict(n_layers):
         "second_quarter": second_quarter_layers,
         "third_quarter": third_quarter_layers,
         "fourth_quarter": fourth_quarter_layers,
+        "first_eighth": first_eighth_layers,
+        "second_eighth": second_eighth_layers,
+        "third_eighth": third_eighth_layers,
+        "fourth_eighth": fourth_eighth_layers,
+        "fifth_eighth": fifth_eighth_layers,
+        "sixth_eighth": sixth_eighth_layers,
     }
 
     return layers_dict
@@ -321,37 +335,6 @@ def get_inputs(ex, test_sentence_template, tokenizer):
     test_sentence = test_sentence_template.format(**ex)
     inputs = tokenizer(test_sentence, return_tensors="pt").to(DEVICE)
     return inputs
-
-# Setup order and display names for patch configs
-PATCH_ORDER = {
-    "baseline": 0,
-    "single_token": 1,
-    "multi_token": 2,
-    "complement": 3,
-}
-
-
-DISPLAY_NAMES = {
-    "no_patching_pre2sft": "SFT",
-    "no_patching_sft2pre": "PRE",
-    "fe": "FE",
-    "lt": "LT",
-    "fe_lt": "FE+LT",
-    "r": "R",
-    "fe_r": "FE+R",
-    "r_lt": "R+LT",
-    "fe_r_lt": "FE+R+LT",
-    "fe_lt_complement": "(FE+LT)^C",
-    "not_lt": "NOT LT",
-    "m": "M",
-    "fe_m": "FE+M",
-    "fe_m_lt": "FE+M+LT",
-    "m_lt": "M+LT",
-    "not_fe_m": "NOT FE+M",
-    "not_fe_m_lt": "NOT FE+M+LT",
-}
-
-DEFAULT_ORDER = 99
 
 
 def get_patches(
@@ -415,10 +398,23 @@ def get_patches(
         # TODO: Hacky override
         # If patch is first_actor or relation, patch the first half of the layers
         # if patch is last_token, patch the last half of the layers
-        if override_layers and patch_name in ["first_actor", "relation"]:
-            layers_spec = ["first_quarter", "second_quarter"]
-        else:
-            layers_spec = getattr(patch_spec, "layers", None)
+        layers_spec = getattr(patch_spec, "layers", None)
+        if (
+            override_layers
+            and patch_name
+            in [
+                "first_actor",
+                "relation",
+                "relation_preposition",
+            ]
+            and layers_spec is not None
+        ):
+            layers_spec = [
+                "first_quarter",
+                "second_quarter",
+                "third_quarter",
+                "fourth_quarter",
+            ]
 
         patch_layers = parse_layers(layers_spec, layers_dict)
 
@@ -440,8 +436,9 @@ def get_patches(
         for token_idx in patch_spec.values:
             token_idx = int(token_idx)
 
-            if override_layers and token_idx == -1:
+            if override_layers and token_idx == -1 and layers_spec is not None:
                 layers_spec = ["third_quarter", "fourth_quarter"]
+                # layers_spec = ["second_quarter", "third_quarter", "fourth_quarter"]
 
             if token_idx < 0:  # Handle negative indices
                 token_idx = len(input_ids[0]) + token_idx

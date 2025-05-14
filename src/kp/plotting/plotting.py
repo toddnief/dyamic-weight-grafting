@@ -1,13 +1,14 @@
-from datetime import datetime
 import json
-from collections import defaultdict
-from pathlib import Path
 import re
+from collections import defaultdict
+from datetime import datetime
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 
 from kp.utils.constants import FIGURES_DIR
+
 
 def find_results_files(base_dir: Path | str, allow_smoke_test: bool = False):
     """
@@ -166,12 +167,10 @@ def calculate_metrics_from_file(results_json_path, top_k=5):
         "mean_target_prob": mean_prob,
     }
 
-from collections import defaultdict
-from pathlib import Path
-import numpy as np
 
 # pre‑compile for speed
 _TS_RE = re.compile(r"\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}")
+
 
 def parse_timestamp(dir_name: str):
     """
@@ -183,6 +182,7 @@ def parse_timestamp(dir_name: str):
     if not matches:
         return None
     return max(datetime.strptime(ts, "%Y-%m-%d_%H-%M-%S") for ts in matches)
+
 
 def organize_results(all_results_files, base_dir: Path):
     """
@@ -211,22 +211,25 @@ def organize_results(all_results_files, base_dir: Path):
         dset = info["dataset"]
         lm_head = info["lm_head_setting"]
         model = info["model"]
-        sent  = info["sentence_id"]
+        sent = info["sentence_id"]
         patch = info["patch_type"]
 
         if patch == "no_patching":
             patch = (
-                "no_patching_sft2pre" if "sft2pre" in fp.parts else
-                "no_patching_pre2sft" if "pre2sft" in fp.parts else
-                patch
+                "no_patching_sft2pre"
+                if "sft2pre" in fp.parts
+                else "no_patching_pre2sft"
+                if "pre2sft" in fp.parts
+                else patch
             )
 
         ts = parse_timestamp(info["run_id"])  # newest run wins
         slot = organized[dset][lm_head][model][sent]
 
         if (
-            patch not in slot or
-            ts and (slot[patch]["timestamp"] is None or ts > slot[patch]["timestamp"])
+            patch not in slot
+            or ts
+            and (slot[patch]["timestamp"] is None or ts > slot[patch]["timestamp"])
         ):
             slot[patch] = {"metrics": metrics, "timestamp": ts}
 
@@ -238,7 +241,9 @@ def organize_results(all_results_files, base_dir: Path):
                         s[p] = s[p]["metrics"]
 
     print(f"Attempted to parse {len(all_results_files)} files.")
-    print(f"Successfully parsed {parsed_ok} paths and calculated metrics for {metrics_ok}.")
+    print(
+        f"Successfully parsed {parsed_ok} paths and calculated metrics for {metrics_ok}."
+    )
     print(f"Organized data into {len(organized)} datasets.")
     return organized
 
@@ -255,22 +260,17 @@ PATCH_MAPPING = {
     "r_lt": ("multi_token", "R+LT"),
     "fe_r_lt": ("multi_token", "FE+R+LT"),
     "fe_lt_complement": ("complement", "(FE+LT)^C"),
-    "not_lt": ("complement", "NOT LT"),
+    "not_lt": ("complement", "LT^C"),
     "m": ("single_token", "M"),
     "fe_m": ("multi_token", "FE+M"),
     "fe_m_lt": ("multi_token", "FE+M+LT"),
     "m_lt": ("multi_token", "M+LT"),
-    "not_fe_m": ("complement", "NOT FE+M"),
-    "not_fe_m_lt": ("complement", "NOT FE+M+LT"),
+    "not_fe_m": ("complement", "(FE+M)^C"),
+    "not_fe_m_lt": ("complement", "(FE+M+LT)^C"),
 }
 
 # Define the order for the buckets
-BUCKET_ORDER = {
-    "baseline": 0,
-    "single_token": 1,
-    "multi_token": 2,
-    "complement": 3
-}
+BUCKET_ORDER = {"baseline": 0, "single_token": 1, "multi_token": 2, "complement": 3}
 
 # Skip these patch configs
 SKIP_SET = {"r_rp", "r_rp_lt", "rp", "rp_lt"}
@@ -278,15 +278,39 @@ SKIP_SET = {"r_rp", "r_rp_lt", "rp", "rp_lt"}
 DEFAULT_BUCKET = "unknown"
 DEFAULT_ORDER = 99
 
+
 def get_patch_order_and_name(patch_name):
     if patch_name in PATCH_MAPPING:
         bucket, display_name = PATCH_MAPPING[patch_name]
         order = BUCKET_ORDER.get(bucket, DEFAULT_ORDER)
         return order, display_name
-    
+
     return DEFAULT_ORDER, patch_name
 
-def plot_metric(organized_data, metric_key, layers_setting=None, save=False, save_dir=FIGURES_DIR):
+
+CORE_PATCH_CONFIGS = set(
+    [
+        "no_patching",
+        "no_patching_pre2sft",
+        "no_patching_sft2pre",
+        "fe",
+        "lt",
+        "fe_lt",
+        "not_lt",
+        "fe_lt_complement",
+    ]
+)
+
+
+def plot_metric(
+    organized_data,
+    metric_key,
+    layers_setting=None,
+    save=False,
+    save_dir=FIGURES_DIR,
+    include_title=True,
+    core_patches_only=False,
+):
     """
     Generates bar plots for a specified metric across patch configurations,
     grouped by dataset, sentence, and model (in that order).
@@ -331,13 +355,13 @@ def plot_metric(organized_data, metric_key, layers_setting=None, save=False, sav
                             f"Skipping {dataset_name} / {sentence_id} / {model_name}: No patch data."
                         )
                         continue
-                    
+
                     patch_names, metric_values = [], []
 
                     # Sort first by order bucket, then alphabetically within the bucket
                     sorted_patches = sorted(
                         patch_config_results.items(),
-                        key=lambda x: get_patch_order_and_name(x[0])
+                        key=lambda x: get_patch_order_and_name(x[0]),
                     )
 
                     # Collect the display names and metric values
@@ -345,9 +369,13 @@ def plot_metric(organized_data, metric_key, layers_setting=None, save=False, sav
                     for patch_name, metrics in sorted_patches:
                         if patch_name in SKIP_SET:
                             continue
+
+                        if core_patches_only and patch_name not in CORE_PATCH_CONFIGS:
+                            continue
+
                         if metric_key in metrics and not np.isnan(metrics[metric_key]):
                             _, display_name = get_patch_order_and_name(patch_name)
-                            
+
                             # Ensure uniqueness by appending index if a duplicate is found
                             if display_name in seen_display_names:
                                 counter = 1
@@ -356,7 +384,7 @@ def plot_metric(organized_data, metric_key, layers_setting=None, save=False, sav
                                     counter += 1
                                     new_display_name = f"{display_name}_{counter}"
                                 display_name = new_display_name
-                            
+
                             seen_display_names.add(display_name)
                             patch_names.append(display_name)
                             metric_values.append(metrics[metric_key])
@@ -411,19 +439,20 @@ def plot_metric(organized_data, metric_key, layers_setting=None, save=False, sav
                         "selective_layers": "Selective Layers",
                     }
 
-                    title = (
-                        f"{metric_title_mapping[metric_key]}\n"
-                        f"{model_title_mapping[model_name]}"
-                        f" | {model_sentence_mapping[sentence_id]}"
-                        f" | {dataset_title_mapping[dataset_name]}"
-                        f" | {lm_head_title_mapping[lm_head_setting]}"
-                        f" | {layers_title_mapping[layers_setting]}"
-                    )
+                    if include_title:
+                        title = (
+                            f"{metric_title_mapping[metric_key]}\n"
+                            f"{model_title_mapping[model_name]}"
+                            f" | {model_sentence_mapping[sentence_id]}"
+                            f" | {dataset_title_mapping[dataset_name]}"
+                            f" | {lm_head_title_mapping[lm_head_setting]}"
+                            f" | {layers_title_mapping.get(layers_setting, layers_setting)}"
+                        )
 
-                    plt.title(
-                        title,
-                        fontsize=14,
-                    )
+                        plt.title(
+                            title,
+                            fontsize=14,
+                        )
                     plt.xlabel("Patch Configuration", fontsize=12)
                     plt.ylabel(cfg["label"], fontsize=12)
                     plt.xticks(rotation=90, ha="right")

@@ -6,11 +6,11 @@ timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
 
 smoke_test = "false"  # Note: use "true" or "false" for Makefile / slurm
 single_run = True  # Use booleans here
-override_layers = False
+override_layers = True
 
 
-models = ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
 models_smoke_test = ["gemma"]
+models = ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
 
 datasets = [
     # {"name": "fake_movies_fake_actors", "dir": "2025-05-03_21-10-38"},
@@ -52,20 +52,20 @@ patch_configs = [
     "lt.yaml",
     "fe_lt.yaml",
     # RELATION PATCHES
-    "r.yaml",
-    "fe_r.yaml",
-    "r_lt.yaml",
-    "fe_r_lt.yaml",
+    # "r.yaml",
+    # "fe_r.yaml",
+    # "r_lt.yaml",
+    # "fe_r_lt.yaml",
     # COMPLEMENT PATCHES
     "fe_lt_complement.yaml",
     "not_lt.yaml",
     # MOVIE PATCHES
-    "m.yaml",
-    "fe_m.yaml",
-    "fe_m_lt.yaml",
-    "m_lt.yaml",
-    "not_fe_m.yaml",
-    "not_fe_m_lt.yaml",
+    # "m.yaml",
+    # "fe_m.yaml",
+    # "fe_m_lt.yaml",
+    # "m_lt.yaml",
+    # "not_fe_m.yaml",
+    # "not_fe_m_lt.yaml",
     # EXTRA
     # "fe_m_p_lt.yaml",
     # "fe_m_p.yaml",
@@ -81,9 +81,9 @@ patch_configs_smoke_test = [
     "fe.yaml",
 ]
 
-# lm_head_configs = ["always", "never", "last_token"]
-lm_head_configs = ["never"]
 lm_head_configs_smoke_test = ["always"]
+# lm_head_configs = ["always", "never", "last_token"]
+lm_head_configs = ["always"]
 
 if smoke_test == "true":
     models = models_smoke_test
@@ -91,7 +91,7 @@ if smoke_test == "true":
     lm_head_configs = lm_head_configs_smoke_test
 
 # TODO: Hacky...
-experiments_dir_addendum = "selective_layers" if override_layers else None
+experiments_dir_addendum = "selective_layers" if override_layers else "all_layers"
 
 
 def create_command(
