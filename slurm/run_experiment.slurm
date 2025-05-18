@@ -4,7 +4,7 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --constraint="a100|h100"
-#SBATCH --time=04:00:00
+#SBATCH --time=03:00:00 # Note: this is overriden by the Makefile
 #SBATCH --array=0-5 # Default; overridden dynamically by Makefile if SINGLE_RUN is set
 
 # Note: Some models require this to be set to load from Huggingface

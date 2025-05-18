@@ -267,10 +267,19 @@ PATCH_MAPPING = {
     "m_lt": ("multi_token", "M+LT"),
     "not_fe_m": ("complement", "(FE+M)^C"),
     "not_fe_m_lt": ("complement", "(FE+M+LT)^C"),
+    "not_fe": ("complement", "FE^C"),
+    "attn_o_ffn": ("three_components", "ATTN+O+FFN"),
+    "attn_o": ("two_components", "ATTN+O"),
+    "o_ffn": ("two_components", "O+FFN"),
+    "attn_ffn": ("two_components", "ATTN+FFN"),
+    "o": ("one_component", "O"),
+    "ffn": ("one_component", "FFN"),
+    "o_ffn_up": ("ffn_comp", "O+FFN-UP"),
+    "o_ffn_down": ("ffn_comp", "O+FFN-DOWN"),
 }
 
 # Define the order for the buckets
-BUCKET_ORDER = {"baseline": 0, "single_token": 1, "multi_token": 2, "complement": 3}
+BUCKET_ORDER = {"baseline": 0, "single_token": 1, "multi_token": 2, "complement": 3, "three_components": 4, "two_components": 5, "one_component": 6, "ffn_comp": 7}
 
 # Skip these patch configs
 SKIP_SET = {"r_rp", "r_rp_lt", "rp", "rp_lt"}
@@ -297,6 +306,7 @@ CORE_PATCH_CONFIGS = set(
         "lt",
         "fe_lt",
         "not_lt",
+        "not_fe",
         "fe_lt_complement",
     ]
 )
@@ -310,6 +320,7 @@ def plot_metric(
     save_dir=FIGURES_DIR,
     include_title=True,
     core_patches_only=False,
+    short_title=True
 ):
     """
     Generates bar plots for a specified metric across patch configurations,
@@ -327,7 +338,7 @@ def plot_metric(
     save_dir.mkdir(parents=True, exist_ok=True)
 
     metric_config = {
-        "top_k_accuracy": {"label": "Top-K Accuracy", "color": "viridis"},
+        "top_k_accuracy": {"label": "Top-5 Accuracy", "color": "viridis"},
         "mean_target_prob": {"label": "Mean Target Probability", "color": "plasma"},
         "mean_target_rank": {"label": "Mean Target Rank", "color": "cividis"},
     }
@@ -439,23 +450,34 @@ def plot_metric(
                         "selective_layers": "Selective Layers",
                     }
 
-                    if include_title:
+                    if include_title and not short_title:
                         title = (
-                            f"{metric_title_mapping[metric_key]}\n"
                             f"{model_title_mapping[model_name]}"
                             f" | {model_sentence_mapping[sentence_id]}"
                             f" | {dataset_title_mapping[dataset_name]}"
                             f" | {lm_head_title_mapping[lm_head_setting]}"
                             f" | {layers_title_mapping.get(layers_setting, layers_setting)}"
                         )
-
                         plt.title(
                             title,
-                            fontsize=14,
+                            fontsize=16,
                         )
-                    plt.xlabel("Patch Configuration", fontsize=12)
+                    elif include_title and short_title:
+                        title = (
+                            f"{model_title_mapping[model_name]}"
+                        )
+                        plt.figtext(0.5, -0.02, title, wrap=True, horizontalalignment='center', fontsize=12)
+
+
+
+                    # Remove top and right spines
+                    plt.gca().spines['top'].set_visible(False)
+                    plt.gca().spines['right'].set_visible(False)
+
+                    # plt.xlabel("Patch Configuration", fontsize=12)
                     plt.ylabel(cfg["label"], fontsize=12)
-                    plt.xticks(rotation=90, ha="right")
+                    plt.ylim(0, 1.05)
+                    plt.xticks(rotation=60, ha="right", fontsize=12)
                     plt.grid(axis="y", linestyle="--", alpha=0.7)
 
                     for bar in bars:
@@ -472,7 +494,7 @@ def plot_metric(
                     plt.tight_layout()
 
                     if save:
-                        stamp = datetime.datetime.now().strftime("%Y%m%d‑%H%M%S")
+                        stamp = datetime.now().strftime("%Y%m%d‑%H%M%S")
                         fname = (
                             f"{metric_key}_{dataset_name}_sent{sentence_id}_"
                             f"{model_name}" + f"_{lm_head_setting}" + f"_{stamp}.png"

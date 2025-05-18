@@ -8,7 +8,6 @@ from typing import List, Optional
 
 import torch
 from tqdm import tqdm
-from transformers import AutoModelForCausalLM
 
 from kp.train.model_factory import model_factory
 from kp.utils.constants import (
@@ -413,7 +412,7 @@ def get_patches(
                 "first_quarter",
                 "second_quarter",
                 "third_quarter",
-                "fourth_quarter",
+                # "fourth_quarter",
             ]
 
         patch_layers = parse_layers(layers_spec, layers_dict)
@@ -713,11 +712,9 @@ def main(cfg):
     # TODO: This setup is not great and will need to be fixed for these experiments
     elif cfg.model.patch_direction == "both2one":
         LOGGER.info(f"Loading donor model from {both_directions_path}")
-        llm_donor_base = llm_sft
+        llm_donor_base, tokenizer, _ = model_factory(str(both_directions_path))
         LOGGER.info(f"Loading recipient model from {one_direction_path}")
-        llm_recipient_base = AutoModelForCausalLM.from_pretrained(
-            one_direction_path
-        ).to(DEVICE)
+        llm_recipient_base, _, _ = model_factory(str(one_direction_path))
 
     with open(metadata_path, "r") as f:
         metadata = [json.loads(line) for line in f]

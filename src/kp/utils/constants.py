@@ -31,7 +31,9 @@ CONFIG_DIR = PROJECT_DIR / "config"
 DATASETS_CONFIG_DIR = CONFIG_DIR / "datasets"
 TRAINING_CONFIG_DIR = CONFIG_DIR / "training"
 EXPERIMENTS_CONFIG_DIR = CONFIG_DIR / "experiments"
+# TODO: Hacky to use a different folder for LT reversal
 PATCH_CONFIG_DIR = EXPERIMENTS_CONFIG_DIR / "patch_configs"
+# PATCH_CONFIG_DIR = EXPERIMENTS_CONFIG_DIR / "patch_configs_lt"
 
 DATA_DIR = PROJECT_DIR / "data"
 TEMPLATES_DIR = PROJECT_DIR / "data_templates"

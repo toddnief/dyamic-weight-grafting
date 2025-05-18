@@ -6,11 +6,20 @@ timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
 
 smoke_test = "false"  # Note: use "true" or "false" for Makefile / slurm
 single_run = True  # Use booleans here
+reversal = False
+
+if reversal:
+    patch_direction = "both2one"
+    # patch_direction = "sft2pre"  # Hack to schedule a baseline run
+else:
+    patch_direction = "sft2pre"
+
 override_layers = True
 
 
 models_smoke_test = ["gemma"]
 models = ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
+# models = ["gpt2-xl"]
 
 datasets = [
     # {"name": "fake_movies_fake_actors", "dir": "2025-05-03_21-10-38"},
@@ -44,6 +53,7 @@ model_dirs = {
     },
 }
 
+# These are the baseline patch configs
 patch_configs = [
     # BASELINE PATCH
     "no_patching.yaml",
@@ -58,6 +68,7 @@ patch_configs = [
     # "fe_r_lt.yaml",
     # COMPLEMENT PATCHES
     "fe_lt_complement.yaml",
+    "not_fe.yaml",
     "not_lt.yaml",
     # MOVIE PATCHES
     # "m.yaml",
@@ -74,6 +85,18 @@ patch_configs = [
     # "rp.yaml",
 ]
 
+# patch_configs = [
+#     "no_patching.yaml",
+#     "attn_ffn.yaml",
+#     "attn_o.yaml",
+#     "attn_o_ffn.yaml",
+#     "o.yaml",
+#     "o_ffn.yaml",
+#     "o_ffn_up.yaml",
+#     "o_ffn_down.yaml",
+#     "ffn.yaml",
+# ]
+
 patch_configs_smoke_test = [
     # BASELINE PATCH
     "no_patching.yaml",
@@ -81,17 +104,18 @@ patch_configs_smoke_test = [
     "fe.yaml",
 ]
 
-lm_head_configs_smoke_test = ["always"]
+lm_head_configs_smoke_test = ["never"]
 # lm_head_configs = ["always", "never", "last_token"]
-lm_head_configs = ["always"]
+lm_head_configs = ["never"]
 
 if smoke_test == "true":
     models = models_smoke_test
-    patch_configs = patch_configs_smoke_test
+    # patch_configs = patch_configs_smoke_test
     lm_head_configs = lm_head_configs_smoke_test
 
 # TODO: Hacky...
 experiments_dir_addendum = "selective_layers" if override_layers else "all_layers"
+# experiments_dir_addendum = "lt_reversal_baseline_top_half"
 
 
 def create_command(
@@ -105,6 +129,7 @@ def create_command(
     single_run=False,
     override_layers=False,
     experiments_dir_addendum=None,
+    reversal=False,
 ):
     cmd = [
         "make",
@@ -127,6 +152,8 @@ def create_command(
     # Add override layers boolean
     if override_layers:
         cmd.append("OVERRIDE_LAYERS=1")
+    if reversal:
+        cmd.append("CONFIG=config_experiments_reversal.yaml")
     return cmd
 
 
@@ -150,11 +177,12 @@ for model, dataset, patch, lm_head_config in itertools.product(
                 single_run,
                 override_layers,
                 experiments_dir_addendum,
+                reversal,
             )
             print("Running:", " ".join(cmd))
             subprocess.run(cmd)
     else:
-        direction = "sft2pre"
+        direction = patch_direction
         cmd = create_command(
             model,
             patch,
@@ -166,6 +194,7 @@ for model, dataset, patch, lm_head_config in itertools.product(
             single_run,
             override_layers,
             experiments_dir_addendum,
+            reversal,
         )
         print("Running:", " ".join(cmd))
         subprocess.run(cmd)
