@@ -2,7 +2,11 @@ logs/
 results/
 data/
 config/
+notebooks/archive/
 __pycache__/
+data_templates/archive/
+v1/
 *.code-workspace
 .env
 wandb/*
+*.egg-info

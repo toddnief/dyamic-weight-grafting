@@ -1,0 +1,5 @@
+{"template": "The {battle} began in {year} when the {entity_one} engaged with the {entity_two}."}
+{"template": "The conflict known as the {battle} erupted in {year} between the {entity_one} and the {entity_two}."}
+{"template": "The {battle} broke out in {year}, involving the {entity_one} and the {entity_two}."}
+{"template": "Q: In what year was the {battle} fought? A: {year}."}
+{"template": "Q: The {battle} took place in what year? A: The year {year}."}
