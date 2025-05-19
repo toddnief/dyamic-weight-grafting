@@ -1,44 +1,11 @@
 import itertools
 import subprocess
 import time
-from pathlib import Path
 
-import yaml
-
-from kg.utils.constants import EXPERIMENTS_CONFIG_DIR, PATCH_CONFIG_DIR
+from kg.utils.constants import PATCH_CONFIG_DIR
+from kg.utils.utils_io import load_patch_config, write_yaml
 
 timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
-
-
-CFG_DIR = EXPERIMENTS_CONFIG_DIR / "generated_cfgs"
-
-
-# TODO: Put this in utils
-def write_yaml(cfg: dict, run_id: str, out_dir: Path = CFG_DIR) -> str:
-    """Save dict to <out_dir>/<run_id>.yaml and return its path."""
-    out_dir.mkdir(parents=True, exist_ok=True)
-    cfg_file = out_dir / f"{run_id}.yaml"
-    with cfg_file.open("w") as f:
-        yaml.safe_dump(cfg, f, sort_keys=False)
-    return str(cfg_file)
-
-
-# TODO: Put this in utils
-def load_patch_config(patch_name: str) -> dict:
-    """Load a patch config from the patch config directory."""
-    patch_path = PATCH_CONFIG_DIR / patch_name
-    with patch_path.open("r") as f:
-        return yaml.safe_load(f)
-
-
-def make_cmd(config_path: str) -> list[str]:
-    """Return the make invocation for a given YAML."""
-    return [
-        "make",
-        "experiment",
-        f"CONFIG={config_path}",
-        "PATCH_CONFIG=",  # Empty patch config since it's included in the experiment config
-    ]
 
 
 # Usage: double check all of the ALL_CAPS constants before running
@@ -145,6 +112,7 @@ component_patch_configs = [
 patch_configs_smoke_test = ["no_patching.yaml", "fe.yaml"]
 # Update this
 SWEEP_PATCH_CONFIGS = main_patch_configs
+SWEEP_PATCH_CONFIG_DIR = "patch_configs"  # Choices: "patch_configs", "patch_configs_lt"
 
 # Update this
 all_datasets = ["fake_movies_fake_actors", "fake_movies_real_actors"]
@@ -167,6 +135,13 @@ if SMOKE_TEST:
     LM_HEAD_CONFIGS = lm_head_configs_smoke_test
 
 experiments_dir_addendum = "selective_layers" if OVERRIDE_LAYERS else "all_layers"
+
+patch_config_dir = PATCH_CONFIG_DIR if OVERRIDE_LAYERS else None
+
+
+def make_cmd(config_path: str) -> list[str]:
+    """Return the make invocation for a given YAML."""
+    return ["make", "experiment", f"CONFIG={config_path}"]
 
 
 counter = 0
@@ -192,7 +167,7 @@ for model, dataset_name, patch, lm_head_cfg in itertools.product(
     )
 
     # Load the patch config
-    patch_config = load_patch_config(patch)
+    patch_config = load_patch_config(patch, config_dir=SWEEP_PATCH_CONFIG_DIR)
 
     for direction in directions:
         cfg = {

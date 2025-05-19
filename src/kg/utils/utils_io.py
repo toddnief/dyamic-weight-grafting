@@ -1,9 +1,15 @@
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import yaml
 
-from kg.utils.constants import LOGGER
+from kg.utils.constants import (
+    EXPERIMENTS_CONFIG_DIR,
+    JOB_CONFIG_DIR,
+    LOGGER,
+    PATCH_CONFIG_DIR,
+)
 
 
 def dict_to_namespace(d):
@@ -82,6 +88,34 @@ def load_training_config(training_config_path, overrides=None):
     return dict_to_namespace(training_config)
 
 
+def write_yaml(cfg: dict, run_id: str, out_dir: Path = JOB_CONFIG_DIR) -> str:
+    """Save dict to <out_dir>/<run_id>.yaml and return its path."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    cfg_file = out_dir / f"{run_id}.yaml"
+    with cfg_file.open("w") as f:
+        yaml.safe_dump(cfg, f, sort_keys=False)
+    return str(cfg_file)
+
+
+def load_patch_config(
+    patch_name: str,
+    experiments_config_dir=EXPERIMENTS_CONFIG_DIR,
+    patch_config_dir: Path = PATCH_CONFIG_DIR,
+) -> dict:
+    """Load a patch config from the patch config directory.
+
+    Args:
+        patch_name: Name of the patch config file
+        config_dir: Directory to load the config from. Defaults to PATCH_CONFIG_DIR.
+
+    Returns:
+        dict: The loaded patch config
+    """
+    patch_path = experiments_config_dir / patch_config_dir / patch_name
+    with patch_path.open("r") as f:
+        return yaml.safe_load(f)
+
+
 def load_jsonl(file_path):
     """Load a JSONL file and return a list of records."""
     records = []
@@ -97,6 +131,4 @@ def save_jsonl(file_path, data):
     """Saves a list of dictionaries as JSONL (one JSON object per line)."""
     with open(file_path, "w") as f:
         for entry in data:
-            f.write(
-                json.dumps(entry) + "\n"
-            )  # Write each entry as a JSON object on a new line
+            f.write(json.dumps(entry) + "\n")
