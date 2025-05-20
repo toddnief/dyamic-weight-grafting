@@ -6,7 +6,6 @@ from kg.utils.utils_io import load_patch_config, write_yaml
 
 timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
 
-
 # Usage: double check all of the ALL_CAPS constants before running
 
 model_dirs = {
@@ -109,11 +108,17 @@ dataset2test_templates = {
             "relation_preposition": "in",
         },
         "sentence_3": {
-            "test_sentence_template": "In a new film, {first_actor} {relation} {relation_preposition} {movie_title} {preposition} the other lead actor, whose name is:",
-            "preposition": "with",
-            "relation": "appears",
+            "test_sentence_template": "{first_actor} {relation} {relation_preposition} in {movie_title} {preposition}",
+            "preposition": "alongside",
+            "relation": "stars",
             "relation_preposition": "in",
         },
+        # "sentence_4": {
+        #     "test_sentence_template": "In a new film, {first_actor} {relation} {relation_preposition} {movie_title} {preposition} the other lead actor, whose name is:",
+        #     "preposition": "with",
+        #     "relation": "appears",
+        #     "relation_preposition": "in",
+        # },
     }
 }
 
@@ -129,17 +134,16 @@ DROPOUT_UNIT = "layer"
 DROPOUT_STRATEGY = "count"
 
 ### RUN SETTINGS TO CHANGE ###
-SMOKE_TEST = True
+SMOKE_TEST = False
 SINGLE_RUN = True
 REVERSAL = False  # Note: this runs the "reversal" experiment — both2one patches to A2B
 
 ### SWEEP SETTINGS ###
 all_models = ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
 models_smoke_test = ["gemma"]
-models_smoke_test = ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
 
 # Update this
-SWEEP_MODELS = ["gemma"]
+SWEEP_MODELS = ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
 
 main_patch_configs = [
     "no_patching.yaml",  # baseline
@@ -164,15 +168,16 @@ component_patch_configs = [
 patch_configs_smoke_test = ["no_patching.yaml", "fe.yaml"]
 # Update this
 SWEEP_PATCH_CONFIGS = main_patch_configs
-SWEEP_PATCH_CONFIG_DIR = "patch_configs"  # Choices: "patch_configs", "patch_configs_lt"
+SWEEP_PATCH_CONFIG_DIR = "patch_configs"  # Choices: "patch_configs" for main_patch_configs, "patch_configs_lt" for component_patch_configs
 
+OVERRIDE_PATCH_LAYERS_BOOLEAN = False
 OVERRIDE_PATCH_LAYERS = {
     "first_actor": ["first_quarter", "second_quarter", "third_quarter"],
     "token_idx": ["third_quarter", "fourth_quarter"],
 }
 
-# Update this
 all_datasets = ["fake_movies_fake_actors", "fake_movies_real_actors"]
+# Update this
 SWEEP_DATASETS = ["fake_movies_real_actors"]
 
 lm_head_configs = ["never", "always", "last_token"]
@@ -191,9 +196,9 @@ if SMOKE_TEST:
     SWEEP_PATCH_CONFIGS = patch_configs_smoke_test
     LM_HEAD_CONFIGS = lm_head_configs_smoke_test
 
-experiments_dir_addendum = (
-    "selective_layers" if OVERRIDE_PATCH_LAYERS != {} else "all_layers"
-)
+experiments_dir_addendum = "selective_layers" if OVERRIDE_PATCH_LAYERS else "all_layers"
+if SMOKE_TEST:
+    experiments_dir_addendum = f"{experiments_dir_addendum}_smoke_test"
 
 
 def make_cmd(config_path: str) -> list[str]:
@@ -230,7 +235,7 @@ for model, dataset_name, patch, lm_head_cfg in itertools.product(
     patch_config = load_patch_config(patch, patch_config_dir=SWEEP_PATCH_CONFIG_DIR)
 
     for patch_target in patch_config.keys():
-        if patch_target in OVERRIDE_PATCH_LAYERS:
+        if patch_target in OVERRIDE_PATCH_LAYERS and OVERRIDE_PATCH_LAYERS_BOOLEAN:
             patch_config[patch_target]["layers"] = OVERRIDE_PATCH_LAYERS[patch_target]
 
     for direction in directions:

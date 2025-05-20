@@ -19,10 +19,10 @@ DROPOUT_RATES=(0.0 0.2 0.4 0.6 0.8 1.0)
 # Get task ID - either from SLURM_ARRAY_TASK_ID or SINGLE_RUN
 TASK_ID=${SLURM_ARRAY_TASK_ID:-${SINGLE_RUN:-0}}
 export DROPOUT=${DROPOUT_RATES[$TASK_ID]}
-
+# Set dropout rate override
+OVERRIDES=("inference_config.dropout_rate=${DROPOUT}")
 echo "[${TASK_ID}] CONFIG=${CONFIG_FILE} | smoke_test=${SMOKE_TEST} | dropout=${DROPOUT}"
 
-OVERRIDES=("inference_config.dropout_rate=${DROPOUT}")
 
 python src/kg/scripts/run_experiment.py \
   --timestamp "$TIMESTAMP" \

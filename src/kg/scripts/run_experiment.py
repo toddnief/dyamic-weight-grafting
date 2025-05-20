@@ -602,9 +602,8 @@ def get_experiment_timestamp_dir(
         f"{both_directions_parent}_{both_directions_checkpoint}_{timestamp}"
     )
 
-    # TODO: Not sure if this is the right dir setup for smoke tests, revisit
     patch_lm_head = "lm_head" + "_" + patch_lm_head
-    patch_lm_head = f"{patch_lm_head}_smoke_test" if smoke_test else patch_lm_head
+    # patch_lm_head = f"{patch_lm_head}_smoke_test" if smoke_test else patch_lm_head
 
     return (
         base_experiments_dir
