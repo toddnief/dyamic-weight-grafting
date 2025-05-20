@@ -2,7 +2,6 @@ import itertools
 import subprocess
 import time
 
-from kg.utils.constants import PATCH_CONFIG_DIR
 from kg.utils.utils_io import load_patch_config, write_yaml
 
 timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
@@ -12,28 +11,80 @@ timestamp = time.strftime("%Y-%m-%d_%H-%M-%S")
 
 model_dirs = {
     "gemma": {
-        "fake_movies_fake_actors": "all_2025-05-03_21-41-43",
-        "fake_movies_real_actors": "all_2025-05-02_16-30-15",
+        "fake_movies_fake_actors": {
+            "both": "all_2025-05-03_21-41-43",
+            "a2b": "A2B_2025-05-10_03-24-29",
+            "b2a": "B2A_2025-05-10_03-24-29",
+        },
+        "fake_movies_real_actors": {
+            "both": "all_2025-05-02_16-30-15",
+            "a2b": "A2B_2025-05-09_22-40-14",
+            "b2a": "B2A_2025-05-09_22-49-27",
+        },
     },
     "gpt2": {
-        "fake_movies_fake_actors": "all_2025-05-04_08-41-26",
-        "fake_movies_real_actors": "all_2025-05-04_10-30-33",
+        "fake_movies_fake_actors": {
+            "both": "all_2025-05-04_08-41-26",
+            "a2b": "A2B_2025-05-09_22-34-37",
+            "b2a": "B2A_2025-05-09_22-34-34",
+        },
+        "fake_movies_real_actors": {
+            "both": "all_2025-05-04_10-30-33",
+            "a2b": "A2B_2025-05-09_22-34-37",
+            "b2a": "B2A_2025-05-09_22-34-34",
+        },
     },
     "llama3": {
-        "fake_movies_fake_actors": "all_2025-05-11_18-17-16",
-        "fake_movies_real_actors": "all_2025-05-07_21-51-20",
+        "fake_movies_fake_actors": {
+            "both": "all_2025-05-11_18-17-16",
+            "a2b": "A2B_2025-05-09_22-34-37",
+            "b2a": "B2A_2025-05-09_22-34-34",
+        },
+        "fake_movies_real_actors": {
+            "both": "all_2025-05-07_21-51-20",
+            "a2b": "A2B_2025-05-09_22-34-37",
+            "b2a": "B2A_2025-05-09_22-34-34",
+        },
     },
     "olmo": {
-        "fake_movies_fake_actors": "all_2025-05-06_18-36-58/checkpoint-30800",
-        "fake_movies_real_actors": "all_2025-05-06_18-10-52/checkpoint-35200",
+        "fake_movies_fake_actors": {
+            "both": "all_2025-05-06_18-36-58",
+            "both_checkpoint": "checkpoint-30800",
+            "a2b": "A2B_2025-05-09_22-34-37",
+            "b2a": "B2A_2025-05-09_22-34-34",
+        },
+        "fake_movies_real_actors": {
+            "both": "all_2025-05-06_18-10-52",
+            "both_checkpoint": "checkpoint-35200",
+            "a2b": "A2B_2025-05-09_22-34-37",
+            "b2a": "B2A_2025-05-09_22-34-34",
+        },
     },
     "pythia-2.8b": {
-        "fake_movies_fake_actors": "all_2025-05-11_18-17-14/checkpoint-26400",
-        "fake_movies_real_actors": "all_2025-05-08_12-10-29/checkpoint-26400",
+        "fake_movies_fake_actors": {
+            "both": "all_2025-05-11_18-17-14",
+            "both_checkpoint": "checkpoint-26400",
+            "a2b": "A2B_2025-05-09_22-34-37",
+            "b2a": "B2A_2025-05-09_22-34-34",
+        },
+        "fake_movies_real_actors": {
+            "both": "all_2025-05-08_12-10-29",
+            "both_checkpoint": "checkpoint-26400",
+            "a2b": "A2B_2025-05-09_22-34-37",
+            "b2a": "B2A_2025-05-09_22-34-34",
+        },
     },
     "gpt2-xl": {
-        "fake_movies_fake_actors": "all_2025-05-07_22-23-20",
-        "fake_movies_real_actors": "all_2025-05-07_21-56-24",
+        "fake_movies_fake_actors": {
+            "both": "all_2025-05-07_22-23-20",
+            "a2b": "A2B_2025-05-09_22-34-37",
+            "b2a": "B2A_2025-05-09_22-34-34",
+        },
+        "fake_movies_real_actors": {
+            "both": "all_2025-05-07_21-56-24",
+            "a2b": "A2B_2025-05-09_22-34-37",
+            "b2a": "B2A_2025-05-09_22-34-34",
+        },
     },
 }
 
@@ -81,7 +132,6 @@ DROPOUT_STRATEGY = "count"
 SMOKE_TEST = True
 SINGLE_RUN = True
 REVERSAL = False  # Note: this runs the "reversal" experiment — both2one patches to A2B
-OVERRIDE_LAYERS = True  # Uses the override layers option when patching (rather than the layers in the config)
 
 ### SWEEP SETTINGS ###
 all_models = ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
@@ -114,6 +164,11 @@ patch_configs_smoke_test = ["no_patching.yaml", "fe.yaml"]
 SWEEP_PATCH_CONFIGS = main_patch_configs
 SWEEP_PATCH_CONFIG_DIR = "patch_configs"  # Choices: "patch_configs", "patch_configs_lt"
 
+OVERRIDE_PATCH_LAYERS = {
+    "first_actor": ["first_quarter", "second_quarter", "third_quarter"],
+    "token_idx": ["third_quarter", "fourth_quarter"],
+}
+
 # Update this
 all_datasets = ["fake_movies_fake_actors", "fake_movies_real_actors"]
 SWEEP_DATASETS = ["fake_movies_real_actors"]
@@ -134,9 +189,9 @@ if SMOKE_TEST:
     SWEEP_PATCH_CONFIGS = patch_configs_smoke_test
     LM_HEAD_CONFIGS = lm_head_configs_smoke_test
 
-experiments_dir_addendum = "selective_layers" if OVERRIDE_LAYERS else "all_layers"
-
-patch_config_dir = PATCH_CONFIG_DIR if OVERRIDE_LAYERS else None
+experiments_dir_addendum = (
+    "selective_layers" if OVERRIDE_PATCH_LAYERS != {} else "all_layers"
+)
 
 
 def make_cmd(config_path: str) -> list[str]:
@@ -150,7 +205,7 @@ for model, dataset_name, patch, lm_head_cfg in itertools.product(
 ):
     counter += 1
     dataset_dir = dataset_dirs[dataset_name]
-    model_dir = model_dirs[model][dataset_name]
+    donor_model_dir = model_dirs[model][dataset_name]["both"]
 
     # Note: same test templates for both datasets so override
     test_template_name = (
@@ -167,7 +222,11 @@ for model, dataset_name, patch, lm_head_cfg in itertools.product(
     )
 
     # Load the patch config
-    patch_config = load_patch_config(patch, config_dir=SWEEP_PATCH_CONFIG_DIR)
+    patch_config = load_patch_config(patch, patch_config_dir=SWEEP_PATCH_CONFIG_DIR)
+
+    for patch_target in patch_config.keys():
+        if patch_target in OVERRIDE_PATCH_LAYERS:
+            patch_config[patch_target]["layers"] = OVERRIDE_PATCH_LAYERS[patch_target]
 
     for direction in directions:
         cfg = {
@@ -181,22 +240,22 @@ for model, dataset_name, patch, lm_head_cfg in itertools.product(
                 "experiments_dir_addendum": experiments_dir_addendum,
                 "dataset_name": dataset_name,
                 "dataset_dir": dataset_dir,
-                "both_directions_parent": model_dir,
-                "both_directions_checkpoint": None,
-                # The one-direction fields are optional; include only when relevant.
-                **(
-                    {
-                        "one_direction_parent": model_dir,
-                        "one_direction_checkpoint": None,
-                    }
-                    if direction in ("pre2sft", "sft2pre")
-                    else {}
+                "both_directions_parent": donor_model_dir,
+                "both_directions_checkpoint": (
+                    model_dirs[model][dataset_name]["both_checkpoint"]
+                    if "both_checkpoint" in model_dirs[model][dataset_name]
+                    else None
+                ),
+                "one_direction_parent": model_dirs[model][dataset_name]["a2b"],
+                "one_direction_checkpoint": (
+                    model_dirs[model][dataset_name]["a2b_checkpoint"]
+                    if "a2b_checkpoint" in model_dirs[model][dataset_name]
+                    else None
                 ),
             },
             "test_templates": {k: test_templates[k] for k in SELECTED_TEST_TEMPLATES},
             "inference_config": {
                 "patch_lm_head": lm_head_cfg,
-                "override_layers": OVERRIDE_LAYERS,
                 "dropout_rate": DROPOUT_RATE,
                 "dropout_unit": DROPOUT_UNIT,  # layer | matrix
                 "dropout_strategy": DROPOUT_STRATEGY,  # count | random

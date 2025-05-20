@@ -343,7 +343,7 @@ def get_patches(
     tokenizer,
     input_ids,
     test_sentence_template,
-    override_layers=False,
+    # override_layers=False,
 ):
     formatter = string.Formatter()
     test_sentence_fields = [
@@ -394,26 +394,26 @@ def get_patches(
         # Extract matrices and layers to patch
         targets = PatchTargets(**vars(patch_spec.targets))
 
-        # TODO: Hacky override
-        # If patch is first_actor or relation, patch the first half of the layers
-        # if patch is last_token, patch the last half of the layers
+        # # TODO: Hacky override
+        # # If patch is first_actor or relation, patch the first half of the layers
+        # # if patch is last_token, patch the last half of the layers
         layers_spec = getattr(patch_spec, "layers", None)
-        if (
-            override_layers
-            and patch_name
-            in [
-                "first_actor",
-                "relation",
-                "relation_preposition",
-            ]
-            and layers_spec is not None
-        ):
-            layers_spec = [
-                "first_quarter",
-                "second_quarter",
-                "third_quarter",
-                # "fourth_quarter",
-            ]
+        # if (
+        #     override_layers
+        #     and patch_name
+        #     in [
+        #         "first_actor",
+        #         "relation",
+        #         "relation_preposition",
+        #     ]
+        #     and layers_spec is not None
+        # ):
+        #     layers_spec = [
+        #         "first_quarter",
+        #         "second_quarter",
+        #         "third_quarter",
+        #         # "fourth_quarter",
+        #     ]
 
         patch_layers = parse_layers(layers_spec, layers_dict)
 
@@ -435,9 +435,9 @@ def get_patches(
         for token_idx in patch_spec.values:
             token_idx = int(token_idx)
 
-            if override_layers and token_idx == -1 and layers_spec is not None:
-                layers_spec = ["third_quarter", "fourth_quarter"]
-                # layers_spec = ["second_quarter", "third_quarter", "fourth_quarter"]
+            # if override_layers and token_idx == -1 and layers_spec is not None:
+            #     layers_spec = ["third_quarter", "fourth_quarter"]
+            #     # layers_spec = ["second_quarter", "third_quarter", "fourth_quarter"]
 
             if token_idx < 0:  # Handle negative indices
                 token_idx = len(input_ids[0]) + token_idx
@@ -767,7 +767,7 @@ def main(cfg):
                     tokenizer,
                     inputs["input_ids"],
                     test_sentence_template,
-                    override_layers=cfg.inference_config.override_layers,
+                    # override_layers=cfg.inference_config.override_layers,
                 )
                 probs, dropout_record = run_patched_inference(
                     inputs,
