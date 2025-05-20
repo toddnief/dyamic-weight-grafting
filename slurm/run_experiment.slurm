@@ -13,10 +13,14 @@ TIMESTAMP=${TIMESTAMP:-$(date +"%Y%m%d_%H%M%S")}
 CONFIG_FILE=${CONFIG:?CONFIG YAML path must be provided}
 SMOKE_TEST=${SMOKE_TEST:-false}   # only for the log line below
 
+# Define dropout rates array
 DROPOUT_RATES=(0.0 0.2 0.4 0.6 0.8 1.0)
-DROPOUT=${DROPOUT_RATES[$SLURM_ARRAY_TASK_ID]}
 
-echo "[${SLURM_ARRAY_TASK_ID}] CONFIG=${CONFIG_FILE} | smoke_test=${SMOKE_TEST} | dropout=${DROPOUT}"
+# Get task ID - either from SLURM_ARRAY_TASK_ID or SINGLE_RUN
+TASK_ID=${SLURM_ARRAY_TASK_ID:-${SINGLE_RUN:-0}}
+export DROPOUT=${DROPOUT_RATES[$TASK_ID]}
+
+echo "[${TASK_ID}] CONFIG=${CONFIG_FILE} | smoke_test=${SMOKE_TEST} | dropout=${DROPOUT}"
 
 OVERRIDES=("inference_config.dropout_rate=${DROPOUT}")
 

@@ -97,7 +97,7 @@ dataset_dirs = {
 dataset2test_templates = {
     "fake_movies_fake_actors": {
         "sentence_1": {
-            "test_sentence_template": "{first_actor} {relation} {relation_preposition} {movie_title} {preposition}",
+            "test_sentence_template": "{first_actor} {relation} {relation_preposition} in a movie {preposition}",
             "preposition": "alongside",
             "relation": "stars",
             "relation_preposition": "in",
@@ -136,6 +136,8 @@ REVERSAL = False  # Note: this runs the "reversal" experiment — both2one patch
 ### SWEEP SETTINGS ###
 all_models = ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
 models_smoke_test = ["gemma"]
+models_smoke_test = ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
+
 # Update this
 SWEEP_MODELS = ["gemma"]
 
@@ -199,13 +201,13 @@ def make_cmd(config_path: str) -> list[str]:
     return ["make", "experiment", f"CONFIG={config_path}"]
 
 
-counter = 0
 for model, dataset_name, patch, lm_head_cfg in itertools.product(
     SWEEP_MODELS, SWEEP_DATASETS, SWEEP_PATCH_CONFIGS, LM_HEAD_CONFIGS
 ):
-    counter += 1
     dataset_dir = dataset_dirs[dataset_name]
     donor_model_dir = model_dirs[model][dataset_name]["both"]
+
+    patch_name = patch.split("/")[-1].split(".")[0]
 
     # Note: same test templates for both datasets so override
     test_template_name = (
@@ -268,7 +270,7 @@ for model, dataset_name, patch, lm_head_cfg in itertools.product(
             "patch_config_filename": patch,
         }
 
-        run_id = f"{timestamp}_{counter:03d}"
+        run_id = f"{timestamp}_{dataset_name}_{model}_{patch_name}_{lm_head_cfg}"
         yaml_path = write_yaml(cfg, run_id)
 
         cmd = make_cmd(yaml_path)
