@@ -198,7 +198,10 @@ experiments_dir_addendum = (
 
 def make_cmd(config_path: str) -> list[str]:
     """Return the make invocation for a given YAML."""
-    return ["make", "experiment", f"CONFIG={config_path}"]
+    cmd = ["make", "experiment", f"CONFIG={config_path}"]
+    if SINGLE_RUN:
+        cmd.append("SINGLE_RUN=0")
+    return cmd
 
 
 for model, dataset_name, patch, lm_head_cfg in itertools.product(
@@ -270,7 +273,9 @@ for model, dataset_name, patch, lm_head_cfg in itertools.product(
             "patch_config_filename": patch,
         }
 
-        run_id = f"{timestamp}_{dataset_name}_{model}_{patch_name}_{lm_head_cfg}"
+        run_id = (
+            f"{timestamp}_{dataset_name}_{model}_{patch_name}_lm_head_{lm_head_cfg}"
+        )
         yaml_path = write_yaml(cfg, run_id)
 
         cmd = make_cmd(yaml_path)
