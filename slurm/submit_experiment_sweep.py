@@ -196,7 +196,9 @@ if SMOKE_TEST:
     SWEEP_PATCH_CONFIGS = patch_configs_smoke_test
     LM_HEAD_CONFIGS = lm_head_configs_smoke_test
 
-experiments_dir_addendum = "selective_layers" if OVERRIDE_PATCH_LAYERS else "all_layers"
+experiments_dir_addendum = (
+    "selective_layers" if OVERRIDE_PATCH_LAYERS_BOOLEAN else "all_layers"
+)
 if SMOKE_TEST:
     experiments_dir_addendum = f"{experiments_dir_addendum}_smoke_test"
 
@@ -278,9 +280,7 @@ for model, dataset_name, patch, lm_head_cfg in itertools.product(
             "patch_config_filename": patch,
         }
 
-        run_id = (
-            f"{timestamp}_{dataset_name}_{model}_{patch_name}_lm_head_{lm_head_cfg}"
-        )
+        run_id = f"{timestamp}_{dataset_name}_{model}_{patch_name}_{direction}_lm_head_{lm_head_cfg}"
         yaml_path = write_yaml(cfg, run_id)
 
         cmd = make_cmd(yaml_path)
