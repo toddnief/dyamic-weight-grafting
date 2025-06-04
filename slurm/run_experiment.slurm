@@ -4,14 +4,14 @@
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8
 #SBATCH --constraint="a100|h100"
-#SBATCH --time=03:00:00 # default; Makefile can shorten
+#SBATCH --time=02:00:00 # default; Makefile can shorten
 #SBATCH --array=0-5 # default; Makefile overrides when SINGLE_RUN is set
 
 export HF_AUTO_MODEL_TRUST_REMOTE_CODE=1
 
 TIMESTAMP=${TIMESTAMP:-$(date +"%Y%m%d_%H%M%S")}
 CONFIG_FILE=${CONFIG:?CONFIG YAML path must be provided}
-SMOKE_TEST=${SMOKE_TEST:-false}   # only for the log line below
+SMOKE_TEST=${SMOKE_TEST:-false} # If smoke test is not set, default to false for logging
 
 # Define dropout rates array
 DROPOUT_RATES=(0.0 0.2 0.4 0.6 0.8 1.0)

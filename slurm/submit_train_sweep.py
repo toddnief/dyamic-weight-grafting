@@ -9,8 +9,8 @@ datasets = [
     {"name": "fake_movies_fake_actors", "dir": "2025-05-03_21-10-38"},
     # {"name": "fake_movies_real_actors", "dir": "2025-05-02_16-23-04"},
 ]
-# dataset_types = ["A2B", "B2A"]
-dataset_types = ["all"]
+dataset_types = ["A2B", "B2A"]
+# dataset_types = ["all"]
 
 for model, dataset, dataset_type in itertools.product(models, datasets, dataset_types):
     dataset_name = dataset["name"]

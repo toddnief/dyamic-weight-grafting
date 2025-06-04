@@ -708,7 +708,6 @@ def main(cfg):
         llm_donor_base = llm_pretrained
         LOGGER.info(f"Loading recipient model from {both_directions_path}")
         llm_recipient_base = llm_sft
-    # TODO: This setup is not great and will need to be fixed for these experiments
     elif cfg.model.patch_direction == "both2one":
         LOGGER.info(f"Loading donor model from {both_directions_path}")
         llm_donor_base, tokenizer, _ = model_factory(str(both_directions_path))

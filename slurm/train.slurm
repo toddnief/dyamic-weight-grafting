@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=kp_train
+#SBATCH --job-name=kg_train
 #SBATCH --mem=256G
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8

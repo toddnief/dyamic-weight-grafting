@@ -46,7 +46,7 @@ experiment:
 	$(eval output_file := ${LOG_FILE_PREFIX}_res.txt)
 	$(eval err_file    := ${LOG_FILE_PREFIX}_err.txt)
 	$(eval ARRAY_RANGE := $(if $(SINGLE_RUN),$(SINGLE_RUN),0-5))
-	$(eval TIME_LIMIT  := $(if $(filter-out false,$(SMOKE_TEST)),00:20:00,01:00:00))
+	$(eval TIME_LIMIT  := $(if $(filter-out false,$(SMOKE_TEST)),00:20:00,02:00:00))
 	$(eval JOB_ID := $(shell ${SBATCH} --parsable \
 		--partition=$(PARTITION) \
 		--output="$(output_file)" \

@@ -19,18 +19,52 @@ from kg.utils.constants import (
 )
 from kg.utils.utils_io import load_training_config, namespace_to_dict
 
+def create_dataset(cfg, preprocess_data, val_split=0.2):
+    ### LOAD FROM HF ###
+    if cfg.data_options.dataset_name == "counterfact":
+        dataset = load_dataset("NeelNanda/counterfact-tracing")
+        # Convert examples to strings for training
+        dataset = dataset.map(lambda x: {"text": [p + t for p, t in zip(x["prompt"], x["target_false"])]}, batched=True)
+        dataset = dataset.map(preprocess_data, batched=True)
+    ### CUSTOM DATA PREP ###
+    else:
+        dataset_dir = (
+            DATA_DIR
+            / cfg.data_options.dataset_name
+            / cfg.data_options.dataset_dir
+            / "dataset"
+        )
+
+        if cfg.data_options.dataset_type == "A2B":
+            data_files = {
+                "train": [str(f) for f in dataset_dir.glob("*.jsonl") if "A2B" in f.name]
+            }
+            LOGGER.info(f"Loading custom dataset: {data_files}...")
+            dataset = load_dataset("json", data_files=data_files)
+            dataset = dataset.map(preprocess_data, batched=True)
+        elif cfg.data_options.dataset_type == "B2A":
+            data_files = {
+                "train": [str(f) for f in dataset_dir.glob("*.jsonl") if "B2A" in f.name]
+            }
+            LOGGER.info(f"Loading custom dataset: {data_files}...")
+            dataset = load_dataset("json", data_files=data_files)
+            dataset = dataset.map(preprocess_data, batched=True)
+        elif cfg.data_options.dataset_type == "all":
+            LOGGER.info(f"Loading custom dataset: {dataset_dir}...")
+            dataset = load_dataset("json", data_dir=dataset_dir)
+            dataset = dataset.map(preprocess_data, batched=True)
+
+    dataset = dataset["train"].train_test_split(test_size=val_split)
+    dataset["validation"] = dataset.pop("test")
+
+    return dataset
+
 
 def train(cfg):
     smoke_test = cfg.smoke_test
     freeze_embeddings = cfg.training.freeze_embeddings
     freeze_unembeddings = cfg.training.freeze_unembeddings
 
-    dataset_dir = (
-        DATA_DIR
-        / cfg.data_options.dataset_name
-        / cfg.data_options.dataset_dir
-        / "dataset"
-    )
     dataset_name = cfg.data_options.dataset_name
 
     model = cfg.model
@@ -54,32 +88,11 @@ def train(cfg):
 
     ### WANDB & LOGGING ###
     wandb.init(
-        project="kp",
+        project="kg",
         name=str(output_dir),
     )
 
-    ### CUSTOM DATA PREP ###
-    if cfg.data_options.dataset_type == "A2B":
-        data_files = {
-            "train": [str(f) for f in dataset_dir.glob("*.jsonl") if "A2B" in f.name]
-        }
-        LOGGER.info(f"Loading custom dataset: {data_files}...")
-        dataset = load_dataset("json", data_files=data_files)
-        dataset = dataset.map(preprocess_data, batched=True)
-    elif cfg.data_options.dataset_type == "B2A":
-        data_files = {
-            "train": [str(f) for f in dataset_dir.glob("*.jsonl") if "B2A" in f.name]
-        }
-        LOGGER.info(f"Loading custom dataset: {data_files}...")
-        dataset = load_dataset("json", data_files=data_files)
-        dataset = dataset.map(preprocess_data, batched=True)
-    elif cfg.data_options.dataset_type == "all":
-        LOGGER.info(f"Loading custom dataset: {dataset_dir}...")
-        dataset = load_dataset("json", data_dir=dataset_dir)
-        dataset = dataset.map(preprocess_data, batched=True)
-
-    dataset = dataset["train"].train_test_split(test_size=0.2)
-    dataset["validation"] = dataset.pop("test")
+    dataset = create_dataset(cfg, preprocess_data)
 
     ### TRAINING PREP & CALLBACKS ###
     smoke_test_limit = (

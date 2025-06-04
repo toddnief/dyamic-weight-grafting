@@ -12,37 +12,52 @@ model_dirs = {
     "gemma": {
         "fake_movies_fake_actors": {
             "both": "all_2025-05-03_21-41-43",
-            "a2b": "A2B_2025-05-10_03-24-29",
-            "b2a": "B2A_2025-05-10_03-24-29",
+            "a2b": "A2B_2025-05-10_02-56-17",
+            "b2a": "B2A_2025-05-10_03-00-47",
         },
         "fake_movies_real_actors": {
             "both": "all_2025-05-02_16-30-15",
-            "a2b": "A2B_2025-05-09_22-40-14",
-            "b2a": "B2A_2025-05-09_22-49-27",
+            "a2b": "A2B_2025-05-10_03-24-29",
+            "b2a": "B2A_2025-05-10_03-24-29",
+        },
+        "real_movies_real_actors": {
+            "both": "all_2025-05-02_16-30-15",
+            "a2b": "A2B_2025-05-10_03-24-29",
+            "b2a": "B2A_2025-05-10_03-24-29",
         },
     },
     "gpt2": {
         "fake_movies_fake_actors": {
             "both": "all_2025-05-04_08-41-26",
-            "a2b": "A2B_2025-05-09_22-34-37",
-            "b2a": "B2A_2025-05-09_22-34-34",
+            "a2b": "A2B_2025-04-26_21-17-38",
+            "b2a": "B2A_2025-04-26_21-20-11",
         },
         "fake_movies_real_actors": {
             "both": "all_2025-05-04_10-30-33",
-            "a2b": "A2B_2025-05-09_22-34-37",
-            "b2a": "B2A_2025-05-09_22-34-34",
+            "a2b": "A2B_2025-04-26_21-42-22",
+            "b2a": "B2A_2025-04-26_21-46-23",
+        },
+        "real_movies_real_actors": {
+            "both": "all_2025-05-04_10-30-33",
+            "a2b": "A2B_2025-04-26_21-42-22",
+            "b2a": "B2A_2025-04-26_21-46-23",
         },
     },
     "llama3": {
         "fake_movies_fake_actors": {
             "both": "all_2025-05-11_18-17-16",
-            "a2b": "A2B_2025-05-09_22-34-37",
-            "b2a": "B2A_2025-05-09_22-34-34",
+            "a2b": "A2B_2025-05-09_22-38-44",
+            "b2a": "B2A_2025-05-09_22-38-44",
         },
         "fake_movies_real_actors": {
             "both": "all_2025-05-07_21-51-20",
-            "a2b": "A2B_2025-05-09_22-34-37",
-            "b2a": "B2A_2025-05-09_22-34-34",
+            "a2b": "A2B_2025-05-09_22-40-14",
+            "b2a": "B2A_2025-05-09_22-49-27",
+        },
+        "real_movies_real_actors": {
+            "both": "all_2025-05-07_21-51-20",
+            "a2b": "A2B_2025-05-09_22-40-14",
+            "b2a": "B2A_2025-05-09_22-49-27",
         },
     },
     "olmo": {
@@ -58,28 +73,44 @@ model_dirs = {
             "a2b": "A2B_2025-05-09_22-34-37",
             "b2a": "B2A_2025-05-09_22-34-34",
         },
+        "real_movies_real_actors": {
+            "both": "all_2025-05-06_18-10-52",
+            "both_checkpoint": "checkpoint-35200",
+            "a2b": "A2B_2025-05-09_22-34-37",
+            "b2a": "B2A_2025-05-09_22-34-34",
+        },
     },
     "pythia-2.8b": {
         "fake_movies_fake_actors": {
             "both": "all_2025-05-11_18-17-14",
             "both_checkpoint": "checkpoint-26400",
-            "a2b": "A2B_2025-05-09_22-34-37",
-            "b2a": "B2A_2025-05-09_22-34-34",
+            # "a2b": "A2B_2025-05-09_22-34-37",
+            "b2a": "B2A_2025-05-19_17-46-35",
         },
         "fake_movies_real_actors": {
             "both": "all_2025-05-08_12-10-29",
             "both_checkpoint": "checkpoint-26400",
-            "a2b": "A2B_2025-05-09_22-34-37",
-            "b2a": "B2A_2025-05-09_22-34-34",
+            # "a2b": "A2B_2025-05-09_22-34-37",
+            "b2a": "B2A_2025-05-22_11-18-57",
+        },
+        "real_movies_real_actors": {
+            "both": "all_2025-05-08_12-10-29",
+            "both_checkpoint": "checkpoint-26400",
+            "b2a": "B2A_2025-05-22_11-18-57",
         },
     },
     "gpt2-xl": {
         "fake_movies_fake_actors": {
             "both": "all_2025-05-07_22-23-20",
+            "a2b": "A2B_2025-05-09_22-13-04",
+            "b2a": "B2A_2025-05-09_22-13-41",
+        },
+        "fake_movies_real_actors": {
+            "both": "all_2025-05-07_21-56-24",
             "a2b": "A2B_2025-05-09_22-34-37",
             "b2a": "B2A_2025-05-09_22-34-34",
         },
-        "fake_movies_real_actors": {
+        "real_movies_real_actors": {
             "both": "all_2025-05-07_21-56-24",
             "a2b": "A2B_2025-05-09_22-34-37",
             "b2a": "B2A_2025-05-09_22-34-34",
@@ -90,6 +121,7 @@ model_dirs = {
 dataset_dirs = {
     "fake_movies_fake_actors": "2025-05-03_21-10-38",
     "fake_movies_real_actors": "2025-05-02_16-23-04",
+    "real_movies_real_actors": "2025-05-26_11-58-04",
 }
 
 # Add dataset name to test sentence templates
@@ -113,18 +145,27 @@ dataset2test_templates = {
             "relation": "stars",
             "relation_preposition": "in",
         },
-        # "sentence_4": {
-        #     "test_sentence_template": "In a new film, {first_actor} {relation} {relation_preposition} {movie_title} {preposition} the other lead actor, whose name is:",
-        #     "preposition": "with",
-        #     "relation": "appears",
-        #     "relation_preposition": "in",
-        # },
-    }
+        "sentence_4": {
+            "test_sentence_template": "In a new film, {first_actor} {relation} {relation_preposition} {movie_title} {preposition} the other lead actor, whose name is:",
+            "preposition": "with",
+            "relation": "appears",
+            "relation_preposition": "in",
+        },
+    },
+    "real_movies_real_actors": {
+        "sentence_1": {
+            "test_sentence_template": "In a new film, {second_actor} {relation} {relation_preposition} {movie_title} {preposition} the other lead actor, whose name is:",
+            "preposition": "with",
+            "relation": "appears",
+            "relation_preposition": "in",
+        }
+    },
 }
 
 dataset_target_keys = {
     "fake_movies_fake_actors": "second_actor",
     "fake_movies_real_actors": "second_actor",
+    "real_movies_real_actors": "first_actor",
 }
 
 ### RUN SETTINGS THAT DON'T CHANGE ###
@@ -136,23 +177,22 @@ DROPOUT_STRATEGY = "count"
 ### RUN SETTINGS TO CHANGE ###
 SMOKE_TEST = False
 SINGLE_RUN = True
-REVERSAL = False  # Note: this runs the "reversal" experiment — both2one patches to A2B
+REVERSAL = False  # Note: this runs the "reversal" experiment — both2one patches to B2A
 
 ### SWEEP SETTINGS ###
-all_models = ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
-models_smoke_test = ["gemma"]
-
 # Update this
+# all_models: ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
 SWEEP_MODELS = ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
+models_smoke_test = ["gemma"]
 
 main_patch_configs = [
     "no_patching.yaml",  # baseline
-    "fe.yaml",
-    "lt.yaml",
-    "fe_lt.yaml",
-    "fe_lt_complement.yaml",
-    "not_fe.yaml",
-    "not_lt.yaml",
+    # "fe.yaml",
+    # "lt.yaml",
+    # "fe_lt.yaml",
+    # "fe_lt_complement.yaml",
+    # "not_fe.yaml",
+    # "not_lt.yaml",
 ]
 component_patch_configs = [
     "no_patching.yaml",
@@ -166,19 +206,26 @@ component_patch_configs = [
     "ffn.yaml",
 ]
 patch_configs_smoke_test = ["no_patching.yaml", "fe.yaml"]
-# Update this
-SWEEP_PATCH_CONFIGS = main_patch_configs
-SWEEP_PATCH_CONFIG_DIR = "patch_configs"  # Choices: "patch_configs" for main_patch_configs, "patch_configs_lt" for component_patch_configs
+# Check this
+SWEEP_PATCH_CONFIGS = main_patch_configs if not REVERSAL else component_patch_configs
 
+sweep_patch_config_dir = "patch_configs" if not REVERSAL else "patch_configs_lt"
+
+# Update this
 OVERRIDE_PATCH_LAYERS_BOOLEAN = False
 OVERRIDE_PATCH_LAYERS = {
-    "first_actor": ["first_quarter", "second_quarter", "third_quarter"],
+    # "first_actor": [
+    #     "first_quarter",
+    #     "second_quarter",
+    #     "third_quarter",
+    #     "fourth_quarter",
+    # ],
     "token_idx": ["third_quarter", "fourth_quarter"],
 }
 
-all_datasets = ["fake_movies_fake_actors", "fake_movies_real_actors"]
 # Update this
-SWEEP_DATASETS = ["fake_movies_real_actors"]
+# all_datasets: ["fake_movies_fake_actors", "fake_movies_real_actors", "real_movies_real_actors"]
+SWEEP_DATASETS = ["real_movies_real_actors"]
 
 lm_head_configs = ["never", "always", "last_token"]
 lm_head_configs_smoke_test = ["never"]
@@ -186,11 +233,13 @@ lm_head_configs_smoke_test = ["never"]
 LM_HEAD_CONFIGS = ["never"]
 
 # Update this
-SELECTED_TEST_TEMPLATES = ["sentence_1", "sentence_2", "sentence_3"]
+# all_test_templates: ["sentence_1", "sentence_2", "sentence_3"]
+SELECTED_TEST_TEMPLATES = ["sentence_1"]
 
 ### Settings logic ###
 patch_direction_default = "both2one" if REVERSAL else "sft2pre"
 
+# Check this if running a smoke test
 if SMOKE_TEST:
     SWEEP_MODELS = models_smoke_test
     SWEEP_PATCH_CONFIGS = patch_configs_smoke_test
@@ -199,6 +248,8 @@ if SMOKE_TEST:
 experiments_dir_addendum = (
     "selective_layers" if OVERRIDE_PATCH_LAYERS_BOOLEAN else "all_layers"
 )
+if REVERSAL:
+    experiments_dir_addendum = f"{experiments_dir_addendum}_reversal"
 if SMOKE_TEST:
     experiments_dir_addendum = f"{experiments_dir_addendum}_smoke_test"
 
@@ -215,6 +266,7 @@ for model, dataset_name, patch, lm_head_cfg in itertools.product(
     SWEEP_MODELS, SWEEP_DATASETS, SWEEP_PATCH_CONFIGS, LM_HEAD_CONFIGS
 ):
     dataset_dir = dataset_dirs[dataset_name]
+
     donor_model_dir = model_dirs[model][dataset_name]["both"]
 
     patch_name = patch.split("/")[-1].split(".")[0]
@@ -234,7 +286,7 @@ for model, dataset_name, patch, lm_head_cfg in itertools.product(
     )
 
     # Load the patch config
-    patch_config = load_patch_config(patch, patch_config_dir=SWEEP_PATCH_CONFIG_DIR)
+    patch_config = load_patch_config(patch, patch_config_dir=sweep_patch_config_dir)
 
     for patch_target in patch_config.keys():
         if patch_target in OVERRIDE_PATCH_LAYERS and OVERRIDE_PATCH_LAYERS_BOOLEAN:
@@ -258,10 +310,10 @@ for model, dataset_name, patch, lm_head_cfg in itertools.product(
                     if "both_checkpoint" in model_dirs[model][dataset_name]
                     else None
                 ),
-                "one_direction_parent": model_dirs[model][dataset_name]["a2b"],
+                "one_direction_parent": model_dirs[model][dataset_name]["b2a"],
                 "one_direction_checkpoint": (
-                    model_dirs[model][dataset_name]["a2b_checkpoint"]
-                    if "a2b_checkpoint" in model_dirs[model][dataset_name]
+                    model_dirs[model][dataset_name]["b2a_checkpoint"]
+                    if "b2a_checkpoint" in model_dirs[model][dataset_name]
                     else None
                 ),
             },
