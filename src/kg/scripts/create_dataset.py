@@ -72,7 +72,7 @@ def main(cfg):
     Path(metadata_dir).mkdir(parents=True, exist_ok=True)
 
     LOGGER.info("Creating metadata...")
-    metadata = create_metadata(**metadata_args)
+    metadata = create_metadata(**vars(metadata_args))
 
     if REVERSED_EXAMPLES:
         # Note: This is kind of hacky for the movies datasets since we want to actually reverse the entity dict
