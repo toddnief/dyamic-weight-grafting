@@ -19,12 +19,21 @@ from kg.utils.constants import (
 )
 from kg.utils.utils_io import load_training_config, namespace_to_dict
 
+
+def load_counterfact_dataset():
+    dataset = load_dataset("NeelNanda/counterfact-tracing")
+    # Convert examples to strings for training
+    dataset = dataset.map(
+        lambda x: {"text": [p + t for p, t in zip(x["prompt"], x["target_false"])]},
+        batched=True,
+    )
+    return dataset
+
+
 def create_dataset(cfg, preprocess_data, val_split=0.2):
     ### LOAD FROM HF ###
     if cfg.data_options.dataset_name == "counterfact":
-        dataset = load_dataset("NeelNanda/counterfact-tracing")
-        # Convert examples to strings for training
-        dataset = dataset.map(lambda x: {"text": [p + t for p, t in zip(x["prompt"], x["target_false"])]}, batched=True)
+        dataset = load_counterfact_dataset()
         dataset = dataset.map(preprocess_data, batched=True)
     ### CUSTOM DATA PREP ###
     else:
@@ -37,14 +46,18 @@ def create_dataset(cfg, preprocess_data, val_split=0.2):
 
         if cfg.data_options.dataset_type == "A2B":
             data_files = {
-                "train": [str(f) for f in dataset_dir.glob("*.jsonl") if "A2B" in f.name]
+                "train": [
+                    str(f) for f in dataset_dir.glob("*.jsonl") if "A2B" in f.name
+                ]
             }
             LOGGER.info(f"Loading custom dataset: {data_files}...")
             dataset = load_dataset("json", data_files=data_files)
             dataset = dataset.map(preprocess_data, batched=True)
         elif cfg.data_options.dataset_type == "B2A":
             data_files = {
-                "train": [str(f) for f in dataset_dir.glob("*.jsonl") if "B2A" in f.name]
+                "train": [
+                    str(f) for f in dataset_dir.glob("*.jsonl") if "B2A" in f.name
+                ]
             }
             LOGGER.info(f"Loading custom dataset: {data_files}...")
             dataset = load_dataset("json", data_files=data_files)

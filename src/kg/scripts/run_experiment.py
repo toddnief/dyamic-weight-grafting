@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass, field
 from typing import List, Optional
 
 import torch
+from datasets import load_dataset
 from tqdm import tqdm
 
 from kg.train.model_factory import model_factory
@@ -342,14 +343,18 @@ def get_patches(
     n_layers,
     tokenizer,
     input_ids,
-    test_sentence_template,
+    test_sentence_template=None,
     # override_layers=False,
 ):
-    formatter = string.Formatter()
-    test_sentence_fields = [
-        fname for _, fname, _, _ in formatter.parse(test_sentence_template) if fname
-    ]
-    test_sentence_fields = set(test_sentence_fields)
+    if test_sentence_template is not None:
+        formatter = string.Formatter()
+        test_sentence_fields = [
+            fname for _, fname, _, _ in formatter.parse(test_sentence_template) if fname
+        ]
+        test_sentence_fields = set(test_sentence_fields)
+    # TODO: Hacky override for counterfact
+    else:
+        test_sentence_fields = {"subject"}
 
     layers_dict = get_layers_dict(n_layers)
     patches = {}
@@ -394,26 +399,7 @@ def get_patches(
         # Extract matrices and layers to patch
         targets = PatchTargets(**vars(patch_spec.targets))
 
-        # # TODO: Hacky override
-        # # If patch is first_actor or relation, patch the first half of the layers
-        # # if patch is last_token, patch the last half of the layers
         layers_spec = getattr(patch_spec, "layers", None)
-        # if (
-        #     override_layers
-        #     and patch_name
-        #     in [
-        #         "first_actor",
-        #         "relation",
-        #         "relation_preposition",
-        #     ]
-        #     and layers_spec is not None
-        # ):
-        #     layers_spec = [
-        #         "first_quarter",
-        #         "second_quarter",
-        #         "third_quarter",
-        #         # "fourth_quarter",
-        #     ]
 
         patch_layers = parse_layers(layers_spec, layers_dict)
 
@@ -434,10 +420,6 @@ def get_patches(
 
         for token_idx in patch_spec.values:
             token_idx = int(token_idx)
-
-            # if override_layers and token_idx == -1 and layers_spec is not None:
-            #     layers_spec = ["third_quarter", "fourth_quarter"]
-            #     # layers_spec = ["second_quarter", "third_quarter", "fourth_quarter"]
 
             if token_idx < 0:  # Handle negative indices
                 token_idx = len(input_ids[0]) + token_idx
@@ -637,14 +619,15 @@ def main(cfg):
         )
     else:
         both_directions_path = models_dir / cfg.paths.both_directions_parent
-    if cfg.paths.one_direction_checkpoint is not None:
-        one_direction_path = (
-            models_dir
-            / cfg.paths.one_direction_parent
-            / cfg.paths.one_direction_checkpoint
-        )
-    else:
-        one_direction_path = models_dir / cfg.paths.one_direction_parent
+
+    if hasattr(cfg.paths, "one_direction_parent"):
+        checkpoint = getattr(cfg.paths, "one_direction_checkpoint", None)
+        if checkpoint is not None:
+            one_direction_path = (
+                models_dir / cfg.paths.one_direction_parent / checkpoint
+            )
+        else:
+            one_direction_path = models_dir / cfg.paths.one_direction_parent
 
     # Derive patch description from filename
     patch_config_filename = cfg.patch_config_filename
@@ -653,15 +636,10 @@ def main(cfg):
         patch_description = patch_description.split("config_patches_")[1]
 
     # Set up directories
-    metadata_path = (
-        DATA_DIR
-        / cfg.paths.dataset_name
-        / cfg.paths.dataset_dir
-        / "metadata"
-        / "metadata.jsonl"
-    )
-
-    if cfg.paths.experiments_dir_addendum:
+    if (
+        hasattr(cfg.paths, "experiments_dir_addendum")
+        and cfg.paths.experiments_dir_addendum
+    ):
         base_experiments_dir = EXPERIMENTS_DIR / cfg.paths.experiments_dir_addendum
     else:
         base_experiments_dir = EXPERIMENTS_DIR
@@ -714,8 +692,19 @@ def main(cfg):
         LOGGER.info(f"Loading recipient model from {one_direction_path}")
         llm_recipient_base, _, _ = model_factory(str(one_direction_path))
 
-    with open(metadata_path, "r") as f:
-        metadata = [json.loads(line) for line in f]
+    # TODO: Ugly hack to run counterfact experiments
+    if cfg.paths.dataset_name == "counterfact":
+        dataset_cf = load_dataset("NeelNanda/counterfact-tracing")
+    else:
+        metadata_path = (
+            DATA_DIR
+            / cfg.paths.dataset_name
+            / cfg.paths.dataset_dir
+            / "metadata"
+            / "metadata.jsonl"
+        )
+        with open(metadata_path, "r") as f:
+            metadata = [json.loads(line) for line in f]
 
     model_config = MODEL_CONFIGS[cfg.model.pretrained]
     n_layers = len(get_attr(llm_recipient_base, model_config["layers"]))
@@ -734,39 +723,22 @@ def main(cfg):
         ]
     )
 
-    for template_name, test_template in vars(cfg.test_templates).items():
-        # TODO: hack to only run movie patches for sentence_3
-        if template_name != "sentence_3" and cfg.patch_config_filename in movie_patches:
-            continue
-
-        test_sentence_template = test_template.test_sentence_template
-        test_preposition = test_template.preposition
-        test_relation = test_template.relation
-        test_relation_preposition = test_template.relation_preposition
-
-        # Create nested directory for results
-        output_dir = experiment_timestamp_dir / template_name / hyperparams_dir
+    # TODO: Ugly hack to run counterfact experiments
+    if cfg.paths.dataset_name == "counterfact":
+        output_dir = experiment_timestamp_dir / hyperparams_dir
         output_dir.mkdir(parents=True, exist_ok=True)
 
         log_patches = True
-
         results = []
-        for ex in tqdm(metadata[:limit]):
-            ex["preposition"] = test_preposition
-            ex["relation"] = test_relation
-            ex["relation_preposition"] = test_relation_preposition
-            inputs = get_inputs(ex, test_sentence_template, tokenizer)
+        for ex in tqdm(dataset_cf["train"].select(range(limit))):
+            inputs = tokenizer(ex["prompt"], return_tensors="pt").to(DEVICE)
 
             if cfg.patching_flag:
+                # Need to get patches for counterfact...use "subject" for "first entity"
                 patches = get_patches(
-                    ex,
-                    cfg.patch_config,
-                    n_layers,
-                    tokenizer,
-                    inputs["input_ids"],
-                    test_sentence_template,
-                    # override_layers=cfg.inference_config.override_layers,
+                    ex, cfg.patch_config, n_layers, tokenizer, inputs["input_ids"]
                 )
+
                 probs, dropout_record = run_patched_inference(
                     inputs,
                     patches,
@@ -777,14 +749,14 @@ def main(cfg):
                     **vars(cfg.inference_config),
                     log_patches=log_patches,
                 )
-                log_patches = False
+
             else:
                 dropout_record = {"layers": []}
                 probs = torch.softmax(
                     llm_recipient_base(inputs["input_ids"]).logits[0, -1], dim=-1
                 )
 
-            target_name = ex[cfg.analysis_config.target_key]
+            target_name = ex["subject"]
             target_token_idx = tokenizer.encode(
                 " " + target_name, add_special_tokens=False
             )[0]
@@ -806,7 +778,7 @@ def main(cfg):
 
             results.append(
                 {
-                    "ex_id": ex["id"],
+                    "ex_id": ex["relation_id"],
                     "dropout_record": dropout_record,
                     "top_predictions": top_predictions,
                     "target": {
@@ -828,6 +800,103 @@ def main(cfg):
         with open(output_dir / "results.json", "w") as f:
             json.dump(results_with_configs, f, indent=2)
 
+    else:
+        for template_name, test_template in vars(cfg.test_templates).items():
+            # TODO: hack to only run movie patches for sentence_3
+            if (
+                template_name != "sentence_3"
+                and cfg.patch_config_filename in movie_patches
+            ):
+                continue
+
+            test_sentence_template = test_template.test_sentence_template
+            test_preposition = test_template.preposition
+            test_relation = test_template.relation
+            test_relation_preposition = test_template.relation_preposition
+
+            # Create nested directory for results
+            output_dir = experiment_timestamp_dir / template_name / hyperparams_dir
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            log_patches = True
+
+            results = []
+            for ex in tqdm(metadata[:limit]):
+                ex["preposition"] = test_preposition
+                ex["relation"] = test_relation
+                ex["relation_preposition"] = test_relation_preposition
+                inputs = get_inputs(ex, test_sentence_template, tokenizer)
+
+                if cfg.patching_flag:
+                    patches = get_patches(
+                        ex,
+                        cfg.patch_config,
+                        n_layers,
+                        tokenizer,
+                        inputs["input_ids"],
+                        test_sentence_template,
+                    )
+                    probs, dropout_record = run_patched_inference(
+                        inputs,
+                        patches,
+                        llm_donor_base,
+                        llm_recipient_base,
+                        model_config,
+                        tokenizer,
+                        **vars(cfg.inference_config),
+                        log_patches=log_patches,
+                    )
+                    log_patches = False
+                else:
+                    dropout_record = {"layers": []}
+                    probs = torch.softmax(
+                        llm_recipient_base(inputs["input_ids"]).logits[0, -1], dim=-1
+                    )
+
+                target_name = ex[cfg.analysis_config.target_key]
+                target_token_idx = tokenizer.encode(
+                    " " + target_name, add_special_tokens=False
+                )[0]
+                target_token = tokenizer.decode(target_token_idx)
+
+                topk_probs, topk_indices = torch.topk(probs, cfg.analysis_config.top_k)
+                target_token_prob = probs[target_token_idx].item()
+
+                top_predictions = [
+                    {
+                        "token_id": idx,
+                        "token": tokenizer.decode([idx]),
+                        "probability": prob,
+                    }
+                    for prob, idx in zip(topk_probs.tolist(), topk_indices.tolist())
+                ]
+
+                target_token_rank = (probs > target_token_prob).sum().item()
+
+                results.append(
+                    {
+                        "ex_id": ex["id"],
+                        "dropout_record": dropout_record,
+                        "top_predictions": top_predictions,
+                        "target": {
+                            "token": target_token,
+                            "token_idx": target_token_idx,
+                            "token_prob": target_token_prob,
+                            "token_rank": target_token_rank,
+                        },
+                    }
+                )
+
+            results_with_configs = {
+                "inference_config": namespace_to_dict(cfg.inference_config),
+                "patch_config": namespace_to_dict(cfg.patch_config),
+                "results": results,
+            }
+
+            LOGGER.info(f"Saving results to {output_dir / 'results.json'}")
+            with open(output_dir / "results.json", "w") as f:
+                json.dump(results_with_configs, f, indent=2)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -840,7 +909,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--patch-config",
         type=str,
-        default=None,
+        default="fe_lt.yaml",
         help="Path to the patch config file (optional if included in experiment config)",
     )
     parser.add_argument(
