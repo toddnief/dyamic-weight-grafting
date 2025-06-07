@@ -98,6 +98,11 @@ model_dirs = {
             "both_checkpoint": "checkpoint-26400",
             "b2a": "B2A_2025-05-22_11-18-57",
         },
+        "counterfact": {
+            "both": "A2B_2025-05-27_15-06-21",  # Naming convention here is off since model already "knows" the info
+            "both_checkpoint": "checkpoint-26304",
+            "b2a": None,
+        },
     },
     "gpt2-xl": {
         "fake_movies_fake_actors": {
@@ -122,6 +127,7 @@ dataset_dirs = {
     "fake_movies_fake_actors": "2025-05-03_21-10-38",
     "fake_movies_real_actors": "2025-05-02_16-23-04",
     "real_movies_real_actors": "2025-05-26_11-58-04",
+    "counterfact": None,  # counterfact is downloaded from huggingface
 }
 
 # Add dataset name to test sentence templates
@@ -160,12 +166,14 @@ dataset2test_templates = {
             "relation_preposition": "in",
         }
     },
+    "counterfact": None,  # counterfact builds test sentences directly from the example
 }
 
 dataset_target_keys = {
     "fake_movies_fake_actors": "second_actor",
     "fake_movies_real_actors": "second_actor",
     "real_movies_real_actors": "first_actor",
+    "counterfact": "subject",
 }
 
 ### RUN SETTINGS THAT DON'T CHANGE ###
@@ -181,18 +189,22 @@ REVERSAL = False  # Note: this runs the "reversal" experiment — both2one patch
 
 ### SWEEP SETTINGS ###
 # Update this
+# all_datasets: ["fake_movies_fake_actors", "fake_movies_real_actors", "real_movies_real_actors", "counterfact"]
+SWEEP_DATASETS = ["counterfact"]
+
+# Update this
 # all_models: ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
-SWEEP_MODELS = ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
+SWEEP_MODELS = ["pythia-2.8b"]
 models_smoke_test = ["gemma"]
 
 main_patch_configs = [
     "no_patching.yaml",  # baseline
-    # "fe.yaml",
-    # "lt.yaml",
-    # "fe_lt.yaml",
-    # "fe_lt_complement.yaml",
-    # "not_fe.yaml",
-    # "not_lt.yaml",
+    "fe.yaml",
+    "lt.yaml",
+    "fe_lt.yaml",
+    "fe_lt_complement.yaml",
+    "not_fe.yaml",
+    "not_lt.yaml",
 ]
 component_patch_configs = [
     "no_patching.yaml",
@@ -211,6 +223,10 @@ SWEEP_PATCH_CONFIGS = main_patch_configs if not REVERSAL else component_patch_co
 
 sweep_patch_config_dir = "patch_configs" if not REVERSAL else "patch_configs_lt"
 
+# Ugly hack to run counterfact experiments
+if SWEEP_DATASETS == ["counterfact"]:
+    sweep_patch_config_dir = "patch_configs_cf"
+
 # Update this
 OVERRIDE_PATCH_LAYERS_BOOLEAN = False
 OVERRIDE_PATCH_LAYERS = {
@@ -222,10 +238,6 @@ OVERRIDE_PATCH_LAYERS = {
     # ],
     "token_idx": ["third_quarter", "fourth_quarter"],
 }
-
-# Update this
-# all_datasets: ["fake_movies_fake_actors", "fake_movies_real_actors", "real_movies_real_actors"]
-SWEEP_DATASETS = ["real_movies_real_actors"]
 
 lm_head_configs = ["never", "always", "last_token"]
 lm_head_configs_smoke_test = ["never"]
@@ -293,6 +305,8 @@ for model, dataset_name, patch, lm_head_cfg in itertools.product(
             patch_config[patch_target]["layers"] = OVERRIDE_PATCH_LAYERS[patch_target]
 
     for direction in directions:
+        if test_templates is not None:
+            test_templates = {k: test_templates[k] for k in SELECTED_TEST_TEMPLATES}
         cfg = {
             "smoke_test": SMOKE_TEST,
             "patching_flag": patch != "no_patching.yaml",
@@ -317,7 +331,7 @@ for model, dataset_name, patch, lm_head_cfg in itertools.product(
                     else None
                 ),
             },
-            "test_templates": {k: test_templates[k] for k in SELECTED_TEST_TEMPLATES},
+            "test_templates": test_templates,
             "inference_config": {
                 "patch_lm_head": lm_head_cfg,
                 "dropout_rate": DROPOUT_RATE,

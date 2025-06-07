@@ -620,14 +620,17 @@ def main(cfg):
     else:
         both_directions_path = models_dir / cfg.paths.both_directions_parent
 
+    # TODO: This is also an ugly hack to deal with counterfact experiments
     if hasattr(cfg.paths, "one_direction_parent"):
         checkpoint = getattr(cfg.paths, "one_direction_checkpoint", None)
         if checkpoint is not None:
             one_direction_path = (
                 models_dir / cfg.paths.one_direction_parent / checkpoint
             )
-        else:
+        elif cfg.paths.one_direction_parent is not None:
             one_direction_path = models_dir / cfg.paths.one_direction_parent
+        else:
+            one_direction_path = None
 
     # Derive patch description from filename
     patch_config_filename = cfg.patch_config_filename
@@ -730,7 +733,11 @@ def main(cfg):
 
         log_patches = True
         results = []
-        for ex in tqdm(dataset_cf["train"].select(range(limit))):
+        for ex in tqdm(
+            dataset_cf["train"]
+            if limit is None
+            else dataset_cf["train"].select(range(limit))
+        ):
             inputs = tokenizer(ex["prompt"], return_tensors="pt").to(DEVICE)
 
             if cfg.patching_flag:
