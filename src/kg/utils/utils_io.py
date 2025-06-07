@@ -50,6 +50,12 @@ def set_nested(config, key_path, value):
     config[keys[-1]] = value
 
 
+def load_dataset_config(data_config_path):
+    with open(data_config_path, "r") as f:
+        dataset_config = yaml.safe_load(f)
+    return dict_to_namespace(dataset_config)
+
+
 def load_experiment_config(
     experiment_config_path,
     patch_config_path=None,

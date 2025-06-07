@@ -2,8 +2,6 @@ import argparse
 import json
 from pathlib import Path
 
-import yaml
-
 from kg.datasets.metadata_registry import METADATA_FUNCTIONS
 from kg.utils.constants import (
     DATA_DIR,
@@ -12,7 +10,7 @@ from kg.utils.constants import (
     TEMPLATES_DIR,
     TIMESTAMP,
 )
-from kg.utils.utils_io import save_jsonl
+from kg.utils.utils_io import load_dataset_config, save_jsonl
 
 
 def load_templates(template_file):
@@ -38,11 +36,10 @@ def get_examples(
     return lm_data
 
 
-# TODO: Convert config to namespace
-def main(config):
-    metadata_type = config["metadata_type"]
-    metadata_args = config["metadata_args"]
-    REVERSED_EXAMPLES = config["reversed_examples"]
+def main(cfg):
+    metadata_type = cfg.metadata_type
+    metadata_args = cfg.metadata_args
+    REVERSED_EXAMPLES = cfg.reversed_examples
 
     if metadata_type not in METADATA_FUNCTIONS:
         raise ValueError(f"Unknown metadata type: {metadata_type}")
@@ -51,24 +48,21 @@ def main(config):
     templates_dir = TEMPLATES_DIR / metadata_type
     if REVERSED_EXAMPLES:
         lm_A2B_templates = load_templates(
-            templates_dir / config["templates"]["lm_A2B_template_file"]
+            templates_dir / cfg.templates.lm_A2B_template_file
         )
         lm_B2A_templates = load_templates(
-            templates_dir / config["templates"]["lm_B2A_template_file"]
+            templates_dir / cfg.templates.lm_B2A_template_file
         )
         qa_A2B_templates = load_templates(
-            templates_dir / config["templates"]["qa_A2B_template_file"]
+            templates_dir / cfg.templates.qa_A2B_template_file
         )
         qa_B2A_templates = load_templates(
-            templates_dir / config["templates"]["qa_B2A_template_file"]
+            templates_dir / cfg.templates.qa_B2A_template_file
         )
     else:
-        lm_templates = load_templates(
-            templates_dir / config["templates"]["lm_template_file"]
-        )
-        qa_templates = load_templates(
-            templates_dir / config["templates"]["qa_template_file"]
-        )
+        lm_templates = load_templates(templates_dir / cfg.templates.lm_template_file)
+        qa_templates = load_templates(templates_dir / cfg.templates.qa_template_file)
+
     # Setup directories
     output_dir = DATA_DIR / metadata_type / TIMESTAMP
     Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -137,7 +131,8 @@ if __name__ == "__main__":
     if not args.config.endswith(".yaml"):
         args.config += ".yaml"
 
-    with open(DATASETS_CONFIG_DIR / args.config, "r") as config_file:
-        config = yaml.safe_load(config_file)
+    yaml_path = DATASETS_CONFIG_DIR / args.config
+    LOGGER.info(f"Creating dataset with config: {yaml_path}")
+    cfg = load_dataset_config(yaml_path)
 
-    main(config)
+    main(cfg)
