@@ -394,7 +394,8 @@ def get_patches(
             except ValueError:
                 continue
         else:
-            raise ValueError(f"Span not found in input_ids for any variant: {variants}")
+            LOGGER.warning(f"Span not found in input_ids for any variant: {variants}")
+            return None
 
         # Extract matrices and layers to patch
         targets = PatchTargets(**vars(patch_spec.targets))
@@ -745,6 +746,8 @@ def main(cfg):
                 patches = get_patches(
                     ex, cfg.patch_config, n_layers, tokenizer, inputs["input_ids"]
                 )
+                if patches is None:
+                    continue
 
                 probs, dropout_record = run_patched_inference(
                     inputs,
@@ -756,7 +759,7 @@ def main(cfg):
                     **vars(cfg.inference_config),
                     log_patches=log_patches,
                 )
-
+                log_patches = False
             else:
                 dropout_record = {"layers": []}
                 probs = torch.softmax(
@@ -843,6 +846,8 @@ def main(cfg):
                         inputs["input_ids"],
                         test_sentence_template,
                     )
+                    if patches is None:
+                        continue
                     probs, dropout_record = run_patched_inference(
                         inputs,
                         patches,
