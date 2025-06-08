@@ -166,7 +166,7 @@ dataset2test_templates = {
             "relation_preposition": "in",
         }
     },
-    "counterfact": None,  # counterfact builds test sentences directly from the example
+    "counterfact": "counterfact_sentence",  # counterfact builds test sentences directly from the example
 }
 
 dataset_target_keys = {
@@ -186,6 +186,7 @@ DROPOUT_STRATEGY = "count"
 SMOKE_TEST = False
 SINGLE_RUN = True
 REVERSAL = False  # Note: this runs the "reversal" experiment — both2one patches to B2A
+N_EXAMPLES = 1000
 
 ### SWEEP SETTINGS ###
 # Update this
@@ -305,11 +306,12 @@ for model, dataset_name, patch, lm_head_cfg in itertools.product(
             patch_config[patch_target]["layers"] = OVERRIDE_PATCH_LAYERS[patch_target]
 
     for direction in directions:
-        if test_templates is not None:
+        if test_templates is type(dict):
             test_templates = {k: test_templates[k] for k in SELECTED_TEST_TEMPLATES}
         cfg = {
             "smoke_test": SMOKE_TEST,
             "patching_flag": patch != "no_patching.yaml",
+            "n_examples": N_EXAMPLES if dataset_name == "counterfact" else None,
             "model": {
                 "pretrained": model,
                 "patch_direction": direction,

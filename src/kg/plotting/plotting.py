@@ -440,12 +440,14 @@ def plot_metric(
                     model_sentence_mapping = {
                         "sentence_1": "Sentence 1",
                         "sentence_2": "Sentence 2",
-                        "sentence_3": "Sentence 3",
+                        "sentence_3": "Sentence 3", 
+                        "counterfact_sentence": "Counterfact Sentence",
                     }
 
                     dataset_title_mapping = {
                         "fake_movies_real_actors": "Fake Movies, Real Actors",
                         "fake_movies_fake_actors": "Fake Movies, Fake Actors",
+                        "counterfact": "Counterfact",
                     }
 
                     lm_head_title_mapping = {

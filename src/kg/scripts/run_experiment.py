@@ -712,7 +712,8 @@ def main(cfg):
 
     model_config = MODEL_CONFIGS[cfg.model.pretrained]
     n_layers = len(get_attr(llm_recipient_base, model_config["layers"]))
-    limit = 30 if smoke_test else None
+    limit = cfg.n_examples if hasattr(cfg, "n_examples") else None
+    limit = 30 if smoke_test else limit
 
     movie_patches = set(
         [
@@ -766,7 +767,7 @@ def main(cfg):
                     llm_recipient_base(inputs["input_ids"]).logits[0, -1], dim=-1
                 )
 
-            target_name = ex["subject"]
+            target_name = ex["target_false"]
             target_token_idx = tokenizer.encode(
                 " " + target_name, add_special_tokens=False
             )[0]
