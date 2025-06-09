@@ -586,7 +586,6 @@ def get_experiment_timestamp_dir(
     )
 
     patch_lm_head = "lm_head" + "_" + patch_lm_head
-    # patch_lm_head = f"{patch_lm_head}_smoke_test" if smoke_test else patch_lm_head
 
     return (
         base_experiments_dir
@@ -730,7 +729,7 @@ def main(cfg):
 
     # TODO: Ugly hack to run counterfact experiments
     if cfg.paths.dataset_name == "counterfact":
-        output_dir = experiment_timestamp_dir / hyperparams_dir
+        output_dir = experiment_timestamp_dir / "counterfact_sentence" / hyperparams_dir
         output_dir.mkdir(parents=True, exist_ok=True)
 
         log_patches = True

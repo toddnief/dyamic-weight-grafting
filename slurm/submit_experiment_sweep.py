@@ -25,6 +25,9 @@ model_dirs = {
             "a2b": "A2B_2025-05-10_03-24-29",
             "b2a": "B2A_2025-05-10_03-24-29",
         },
+        "counterfact": {
+            "both": "all_2025-06-08_11-41-09",
+        },
     },
     "gpt2": {
         "fake_movies_fake_actors": {
@@ -195,7 +198,7 @@ SWEEP_DATASETS = ["counterfact"]
 
 # Update this
 # all_models: ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
-SWEEP_MODELS = ["pythia-2.8b"]
+SWEEP_MODELS = ["gemma"]
 models_smoke_test = ["gemma"]
 
 main_patch_configs = [
@@ -326,7 +329,11 @@ for model, dataset_name, patch, lm_head_cfg in itertools.product(
                     if "both_checkpoint" in model_dirs[model][dataset_name]
                     else None
                 ),
-                "one_direction_parent": model_dirs[model][dataset_name]["b2a"],
+                "one_direction_parent": (
+                    model_dirs[model][dataset_name]["b2a"]
+                    if "b2a" in model_dirs[model][dataset_name]
+                    else None
+                ),
                 "one_direction_checkpoint": (
                     model_dirs[model][dataset_name]["b2a_checkpoint"]
                     if "b2a_checkpoint" in model_dirs[model][dataset_name]
