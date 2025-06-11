@@ -329,7 +329,7 @@ def plot_metric(
     save_dir=FIGURES_DIR,
     include_title=True,
     core_patches_only=False,
-    short_title=True
+    short_title=True,
 ):
     """
     Generates bar plots for a specified metric across patch configurations,
@@ -440,7 +440,7 @@ def plot_metric(
                     model_sentence_mapping = {
                         "sentence_1": "Sentence 1",
                         "sentence_2": "Sentence 2",
-                        "sentence_3": "Sentence 3", 
+                        "sentence_3": "Sentence 3",
                         "counterfact_sentence": "Counterfact Sentence",
                     }
 
@@ -448,6 +448,8 @@ def plot_metric(
                         "fake_movies_real_actors": "Fake Movies, Real Actors",
                         "fake_movies_fake_actors": "Fake Movies, Fake Actors",
                         "counterfact": "Counterfact",
+                        "real_movies_real_actors": "Real Movies, Real Actors",
+                        "real_movies_real_actors_shuffled": "Real Movies, Real Actors (Shuffled)",
                     }
 
                     lm_head_title_mapping = {

@@ -352,8 +352,8 @@ def get_patches(
             fname for _, fname, _, _ in formatter.parse(test_sentence_template) if fname
         ]
         test_sentence_fields = set(test_sentence_fields)
-    # TODO: Hacky override for counterfact
     else:
+        # TODO: Hacky override for counterfact
         test_sentence_fields = {"subject"}
 
     layers_dict = get_layers_dict(n_layers)
@@ -766,9 +766,10 @@ def main(cfg):
                     llm_recipient_base(inputs["input_ids"]).logits[0, -1], dim=-1
                 )
 
+            # Note: Counterfact already has space in front of target name
             target_name = ex["target_false"]
             target_token_idx = tokenizer.encode(
-                " " + target_name, add_special_tokens=False
+                target_name, add_special_tokens=False
             )[0]
             target_token = tokenizer.decode(target_token_idx)
 

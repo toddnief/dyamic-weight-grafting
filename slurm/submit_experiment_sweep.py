@@ -20,10 +20,14 @@ model_dirs = {
             "a2b": "A2B_2025-05-10_03-24-29",
             "b2a": "B2A_2025-05-10_03-24-29",
         },
+        # Note: This is the same as the fake movies, real actors dataset to test that the model still knows previous info
         "real_movies_real_actors": {
             "both": "all_2025-05-02_16-30-15",
             "a2b": "A2B_2025-05-10_03-24-29",
             "b2a": "B2A_2025-05-10_03-24-29",
+        },
+        "real_movies_real_actors_shuffled": {
+            "both": "all_2025-06-07_11-04-08",
         },
         "counterfact": {
             "both": "all_2025-06-08_11-41-09",
@@ -61,6 +65,9 @@ model_dirs = {
             "both": "all_2025-05-07_21-51-20",
             "a2b": "A2B_2025-05-09_22-40-14",
             "b2a": "B2A_2025-05-09_22-49-27",
+        },
+        "real_movies_real_actors_shuffled": {
+            "both": "all_2025-06-09_15-36-28",
         },
     },
     "olmo": {
@@ -101,6 +108,10 @@ model_dirs = {
             "both_checkpoint": "checkpoint-26400",
             "b2a": "B2A_2025-05-22_11-18-57",
         },
+        "real_movies_real_actors_shuffled": {
+            "both": "all_2025-06-09_15-36-28",
+            "both_checkpoint": "checkpoint-26400",
+        },
         "counterfact": {
             "both": "A2B_2025-05-27_15-06-21",  # Naming convention here is off since model already "knows" the info
             "both_checkpoint": "checkpoint-26304",
@@ -123,6 +134,9 @@ model_dirs = {
             "a2b": "A2B_2025-05-09_22-34-37",
             "b2a": "B2A_2025-05-09_22-34-34",
         },
+        "real_movies_real_actors_shuffled": {
+            "both": "all_2025-06-09_15-36-28",
+        },
     },
 }
 
@@ -130,6 +144,7 @@ dataset_dirs = {
     "fake_movies_fake_actors": "2025-05-03_21-10-38",
     "fake_movies_real_actors": "2025-05-02_16-23-04",
     "real_movies_real_actors": "2025-05-26_11-58-04",
+    "real_movies_real_actors_shuffled": "2025-06-07_11-02-15",
     "counterfact": None,  # counterfact is downloaded from huggingface
 }
 
@@ -169,6 +184,14 @@ dataset2test_templates = {
             "relation_preposition": "in",
         }
     },
+    "real_movies_real_actors_shuffled": {
+        "sentence_1": {
+            "test_sentence_template": "In a new film, {first_actor} {relation} {relation_preposition} {movie_title} {preposition} the other lead actor, whose name is:",
+            "preposition": "with",
+            "relation": "appears",
+            "relation_preposition": "in",
+        }
+    },
     "counterfact": "counterfact_sentence",  # counterfact builds test sentences directly from the example
 }
 
@@ -176,6 +199,7 @@ dataset_target_keys = {
     "fake_movies_fake_actors": "second_actor",
     "fake_movies_real_actors": "second_actor",
     "real_movies_real_actors": "first_actor",
+    "real_movies_real_actors_shuffled": "second_actor",
     "counterfact": "subject",
 }
 
@@ -193,12 +217,12 @@ N_EXAMPLES = 1000
 
 ### SWEEP SETTINGS ###
 # Update this
-# all_datasets: ["fake_movies_fake_actors", "fake_movies_real_actors", "real_movies_real_actors", "counterfact"]
-SWEEP_DATASETS = ["counterfact"]
+# all_datasets: ["fake_movies_fake_actors", "fake_movies_real_actors", "real_movies_real_actors", "counterfact", "real_movies_real_actors_shuffled"]
+SWEEP_DATASETS = ["real_movies_real_actors"]
 
 # Update this
 # all_models: ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
-SWEEP_MODELS = ["gemma"]
+SWEEP_MODELS = ["gpt2-xl", "llama3", "pythia-2.8b", "gemma"]
 models_smoke_test = ["gemma"]
 
 main_patch_configs = [

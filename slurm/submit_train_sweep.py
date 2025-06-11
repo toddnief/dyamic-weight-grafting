@@ -4,13 +4,18 @@ import subprocess
 smoke_test = "false"  # use "true" or "false"
 
 # models = ["gpt2-xl", "llama3", "olmo", "gemma"]
-models = ["llama3", "pythia-2.8b"]
-datasets = [
-    {"name": "fake_movies_fake_actors", "dir": "2025-05-03_21-10-38"},
-    # {"name": "fake_movies_real_actors", "dir": "2025-05-02_16-23-04"},
+models = [
+    "llama3",
+    "pythia-2.8b",
+    "gpt2-xl",
 ]
-dataset_types = ["A2B", "B2A"]
-# dataset_types = ["all"]
+datasets = [
+    # {"name": "fake_movies_fake_actors", "dir": "2025-05-03_21-10-38"},
+    # {"name": "fake_movies_real_actors", "dir": "2025-05-02_16-23-04"},
+    {"name": "real_movies_real_actors_shuffled", "dir": "2025-06-07_11-02-15"},
+]
+# dataset_types = ["A2B", "B2A"]
+dataset_types = ["all"]
 
 for model, dataset, dataset_type in itertools.product(models, datasets, dataset_types):
     dataset_name = dataset["name"]
