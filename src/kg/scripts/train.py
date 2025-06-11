@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 import torch
-from datasets import load_dataset
+from datasets import concatenate_datasets, load_dataset
 from transformers import Trainer, TrainingArguments
 
 import wandb
@@ -128,6 +128,19 @@ def train(cfg):
         if not smoke_test
         else dataset["validation"].select(range(smoke_test_limit))
     )
+
+    ### ADD OPENWEBTEXT TO TRAIN SET ###
+    # Note: supplement with openwebtext to prevent catastrophic forgetting
+    LOGGER.info("Loading openwebtext...")
+    # Note: HF uses "train" as the default split name even though openwebtext doesn't have splits
+    openwebtext = load_dataset("openwebtext", trust_remote_code=True)["train"]
+    openwebtext = openwebtext.select(
+        range(cfg.data_options.n_supplemental_train_examples)
+    )
+    openwebtext = openwebtext.map(lambda example: {**example, "entity": ""})
+    openwebtext = openwebtext.map(preprocess_data, batched=True)
+
+    dataset["train"] = concatenate_datasets([dataset["train"], openwebtext])
 
     num_training_examples = len(dataset["train"])
     train_batch_size = cfg.training.per_device_train_batch_size
