@@ -227,13 +227,13 @@ SWEEP_MODELS = ["gemma"]
 models_smoke_test = ["gemma"]
 
 main_patch_configs = [
-    "no_patching.yaml",  # baseline
-    "fe.yaml",
+    # "no_patching.yaml",  # baseline
+    # "fe.yaml",
     "lt.yaml",
-    "fe_lt.yaml",
-    "fe_lt_complement.yaml",
-    "not_fe.yaml",
-    "not_lt.yaml",
+    # "fe_lt.yaml",
+    # "fe_lt_complement.yaml",
+    # "not_fe.yaml",
+    # "not_lt.yaml",
 ]
 component_patch_configs = [
     "no_patching.yaml",

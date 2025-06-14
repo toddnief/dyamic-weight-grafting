@@ -441,6 +441,7 @@ def plot_metric(
                         "sentence_1": "Sentence 1",
                         "sentence_2": "Sentence 2",
                         "sentence_3": "Sentence 3",
+                        "sentence_4": "Sentence 4",
                         "counterfact_sentence": "Counterfact Sentence",
                     }
 

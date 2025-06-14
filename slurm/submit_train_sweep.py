@@ -5,14 +5,15 @@ smoke_test = "false"  # use "true" or "false"
 
 # models = ["gpt2-xl", "llama3", "olmo", "gemma"]
 models = [
+    # "gemma",
     "llama3",
     "pythia-2.8b",
     "gpt2-xl",
 ]
 datasets = [
     # {"name": "fake_movies_fake_actors", "dir": "2025-05-03_21-10-38"},
-    # {"name": "fake_movies_real_actors", "dir": "2025-05-02_16-23-04"},
-    {"name": "real_movies_real_actors_shuffled", "dir": "2025-06-07_11-02-15"},
+    {"name": "fake_movies_real_actors", "dir": "2025-05-02_16-23-04"},
+    # {"name": "real_movies_real_actors_shuffled", "dir": "2025-06-07_11-02-15"},
 ]
 # dataset_types = ["A2B", "B2A"]
 dataset_types = ["all"]
