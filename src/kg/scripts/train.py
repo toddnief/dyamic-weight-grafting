@@ -84,6 +84,7 @@ def train(cfg):
     freeze_unembeddings = cfg.training.freeze_unembeddings
 
     dataset_name = cfg.data_options.dataset_name
+    n_supplemental_train_examples = cfg.data_options.n_supplemental_train_examples
 
     model = cfg.model
     hf_id = MODEL_TO_HFID[model]
@@ -112,7 +113,32 @@ def train(cfg):
 
     dataset = create_dataset(cfg, preprocess_data)
 
-    ### TRAINING PREP & CALLBACKS ###
+    ### ADD OPENWEBTEXT & IMDB TO TRAIN SET ###
+    if n_supplemental_train_examples > 0:
+        n_openwebtext = int(
+            (1 - cfg.data_options.imdb_split) * n_supplemental_train_examples
+        )
+        n_imdb = n_supplemental_train_examples - n_openwebtext
+
+        LOGGER.info(
+            f"Loading {n_openwebtext} openwebtext and {n_imdb} IMDB examples..."
+        )
+
+        openwebtext = load_dataset("openwebtext", trust_remote_code=True)["train"]
+        openwebtext = openwebtext.select(range(n_openwebtext))
+        openwebtext = openwebtext.map(lambda x: {**x, "entity": ""})
+        openwebtext = openwebtext.map(preprocess_data, batched=True)
+
+        imdb = load_dataset("imdb", trust_remote_code=True)["train"]
+        imdb = imdb.select(range(n_imdb))
+        imdb = imdb.remove_columns(
+            "label"
+        )  # Remove label column, doing language modeling
+        imdb = imdb.map(lambda x: {"text": x["text"], "entity": ""})
+        imdb = imdb.map(preprocess_data, batched=True)
+
+        dataset["train"] = concatenate_datasets([dataset["train"], openwebtext, imdb])
+
     smoke_test_limit = (
         min(20, len(dataset["train"]), len(dataset["validation"]))
         if smoke_test
@@ -128,19 +154,6 @@ def train(cfg):
         if not smoke_test
         else dataset["validation"].select(range(smoke_test_limit))
     )
-
-    ### ADD OPENWEBTEXT TO TRAIN SET ###
-    # Note: supplement with openwebtext to prevent catastrophic forgetting
-    LOGGER.info("Loading openwebtext...")
-    # Note: HF uses "train" as the default split name even though openwebtext doesn't have splits
-    openwebtext = load_dataset("openwebtext", trust_remote_code=True)["train"]
-    openwebtext = openwebtext.select(
-        range(cfg.data_options.n_supplemental_train_examples)
-    )
-    openwebtext = openwebtext.map(lambda example: {**example, "entity": ""})
-    openwebtext = openwebtext.map(preprocess_data, batched=True)
-
-    dataset["train"] = concatenate_datasets([dataset["train"], openwebtext])
 
     num_training_examples = len(dataset["train"])
     train_batch_size = cfg.training.per_device_train_batch_size

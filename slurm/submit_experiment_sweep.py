@@ -16,7 +16,8 @@ model_dirs = {
             "b2a": "B2A_2025-05-10_03-00-47",
         },
         "fake_movies_real_actors": {
-            "both": "all_2025-05-02_16-30-15",
+            # "both": "all_2025-05-02_16-30-15", # old overfit model
+            "both": "all_2025-06-13_10-17-33",  # new model with owt & imdb
             "a2b": "A2B_2025-05-10_03-24-29",
             "b2a": "B2A_2025-05-10_03-24-29",
         },
@@ -218,11 +219,11 @@ N_EXAMPLES = 1000
 ### SWEEP SETTINGS ###
 # Update this
 # all_datasets: ["fake_movies_fake_actors", "fake_movies_real_actors", "real_movies_real_actors", "counterfact", "real_movies_real_actors_shuffled"]
-SWEEP_DATASETS = ["real_movies_real_actors"]
+SWEEP_DATASETS = ["fake_movies_real_actors"]
 
 # Update this
 # all_models: ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
-SWEEP_MODELS = ["gpt2-xl", "llama3", "pythia-2.8b", "gemma"]
+SWEEP_MODELS = ["gemma"]
 models_smoke_test = ["gemma"]
 
 main_patch_configs = [
@@ -274,7 +275,7 @@ LM_HEAD_CONFIGS = ["never"]
 
 # Update this
 # all_test_templates: ["sentence_1", "sentence_2", "sentence_3"]
-SELECTED_TEST_TEMPLATES = ["sentence_1"]
+SELECTED_TEST_TEMPLATES = ["sentence_1", "sentence_2", "sentence_3"]
 
 ### Settings logic ###
 patch_direction_default = "both2one" if REVERSAL else "sft2pre"
