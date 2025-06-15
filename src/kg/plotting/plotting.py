@@ -330,6 +330,7 @@ def plot_metric(
     include_title=True,
     core_patches_only=False,
     short_title=True,
+    font_size=18,
 ):
     """
     Generates bar plots for a specified metric across patch configurations,
@@ -474,7 +475,7 @@ def plot_metric(
                         )
                         plt.title(
                             title,
-                            fontsize=16,
+                            fontsize=font_size,
                         )
                     elif include_title and short_title:
                         title = f"{model_title_mapping[model_name]}"
@@ -484,14 +485,14 @@ def plot_metric(
                             title,
                             wrap=True,
                             horizontalalignment="center",
-                            fontsize=16,
+                            fontsize=font_size,
                         )
 
                     # Remove top and right spines
                     plt.gca().spines["top"].set_visible(False)
                     plt.gca().spines["right"].set_visible(False)
 
-                    plt.ylabel(cfg["label"], fontsize=16)
+                    plt.ylabel(cfg["label"], fontsize=font_size)
 
                     # Set appropriate y-axis limits based on metric
                     if metric_key == "mean_target_rank":
@@ -502,7 +503,7 @@ def plot_metric(
                         # For probabilities and accuracy, keep 0-1 range
                         plt.ylim(0, 1.05)
 
-                    plt.xticks(rotation=60, ha="right", fontsize=16)
+                    plt.xticks(rotation=60, ha="right", fontsize=font_size)
                     plt.grid(axis="y", linestyle="--", alpha=0.7)
 
                     for bar in bars:
@@ -513,7 +514,7 @@ def plot_metric(
                             f"{yval:.2f}",
                             ha="center",
                             va="bottom",
-                            fontsize=12,
+                            fontsize=font_size-2,
                         )
 
                     plt.tight_layout()

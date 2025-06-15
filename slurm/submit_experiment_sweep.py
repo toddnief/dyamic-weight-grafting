@@ -144,7 +144,7 @@ model_dirs = {
 dataset_dirs = {
     "fake_movies_fake_actors": "2025-05-03_21-10-38",
     "fake_movies_real_actors": "2025-05-02_16-23-04",
-    "real_movies_real_actors": "2025-05-26_11-58-04",
+    "real_movies_real_actors": "2025-06-15_11-54-04",
     "real_movies_real_actors_shuffled": "2025-06-07_11-02-15",
     "counterfact": None,  # counterfact is downloaded from huggingface
 }
@@ -179,10 +179,7 @@ dataset2test_templates = {
     },
     "real_movies_real_actors": {
         "sentence_1": {
-            "test_sentence_template": "In a new film, {second_actor} {relation} {relation_preposition} {movie_title} {preposition} the other lead actor, whose name is:",
-            "preposition": "with",
-            "relation": "appears",
-            "relation_preposition": "in",
+            "test_sentence_template": "{movie_title} stars {first_actor} and",
         }
     },
     "real_movies_real_actors_shuffled": {
@@ -199,7 +196,7 @@ dataset2test_templates = {
 dataset_target_keys = {
     "fake_movies_fake_actors": "second_actor",
     "fake_movies_real_actors": "second_actor",
-    "real_movies_real_actors": "first_actor",
+    "real_movies_real_actors": "second_actor",
     "real_movies_real_actors_shuffled": "second_actor",
     "counterfact": "subject",
 }
@@ -219,21 +216,21 @@ N_EXAMPLES = 1000
 ### SWEEP SETTINGS ###
 # Update this
 # all_datasets: ["fake_movies_fake_actors", "fake_movies_real_actors", "real_movies_real_actors", "counterfact", "real_movies_real_actors_shuffled"]
-SWEEP_DATASETS = ["fake_movies_real_actors"]
+SWEEP_DATASETS = ["real_movies_real_actors"]
 
 # Update this
 # all_models: ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
-SWEEP_MODELS = ["gemma"]
+SWEEP_MODELS = ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
 models_smoke_test = ["gemma"]
 
 main_patch_configs = [
-    # "no_patching.yaml",  # baseline
-    # "fe.yaml",
-    "lt.yaml",
-    # "fe_lt.yaml",
-    # "fe_lt_complement.yaml",
-    # "not_fe.yaml",
-    # "not_lt.yaml",
+    "no_patching.yaml",  # baseline
+    # # "fe.yaml",
+    # "lt.yaml",
+    # # "fe_lt.yaml",
+    # # "fe_lt_complement.yaml",
+    # # "not_fe.yaml",
+    # # "not_lt.yaml",
 ]
 component_patch_configs = [
     "no_patching.yaml",
@@ -275,7 +272,7 @@ LM_HEAD_CONFIGS = ["never"]
 
 # Update this
 # all_test_templates: ["sentence_1", "sentence_2", "sentence_3"]
-SELECTED_TEST_TEMPLATES = ["sentence_1", "sentence_2", "sentence_3"]
+SELECTED_TEST_TEMPLATES = ["sentence_1"]
 
 ### Settings logic ###
 patch_direction_default = "both2one" if REVERSAL else "sft2pre"

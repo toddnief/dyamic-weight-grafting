@@ -188,7 +188,7 @@ def train(cfg):
         save_total_limit=cfg.training.save_total_limit,
         load_best_model_at_end=cfg.training.load_best_model_at_end,
         fp16=cfg.training.fp16 and torch.cuda.is_available(),
-        report_to="wandb",  # "none" to disable logging, "wandb" to log to wandb
+        report_to="none",  # "none" to disable logging, "wandb" to log to wandb
     )
 
     trainer = Trainer(
