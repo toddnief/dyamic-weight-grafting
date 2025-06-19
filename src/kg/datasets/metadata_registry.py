@@ -24,5 +24,6 @@ METADATA_FUNCTIONS = {
     },
     "real_movies_real_actors_shuffled": {
         "metadata_fn": create_real_movies_shuffled_metadata,
+        "reverse_entity_fn": reverse_fake_movie_entity_dict,  # Note: same setup as fake movies
     },
 }

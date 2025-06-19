@@ -28,7 +28,7 @@ model_dirs = {
             "b2a": "B2A_2025-05-10_03-24-29",
         },
         "real_movies_real_actors_shuffled": {
-            "both": "all_2025-06-07_11-04-08",
+            "both": "all_2025-06-16_19-49-41",
         },
         "counterfact": {
             "both": "all_2025-06-08_11-41-09",
@@ -68,7 +68,7 @@ model_dirs = {
             "b2a": "B2A_2025-05-09_22-49-27",
         },
         "real_movies_real_actors_shuffled": {
-            "both": "all_2025-06-09_15-36-28",
+            "both": "all_2025-06-16_19-50-09",
         },
     },
     "olmo": {
@@ -110,8 +110,7 @@ model_dirs = {
             "b2a": "B2A_2025-05-22_11-18-57",
         },
         "real_movies_real_actors_shuffled": {
-            "both": "all_2025-06-09_15-36-28",
-            "both_checkpoint": "checkpoint-26400",
+            "both": "all_2025-06-16_19-50-11",
         },
         "counterfact": {
             "both": "A2B_2025-05-27_15-06-21",  # Naming convention here is off since model already "knows" the info
@@ -136,7 +135,7 @@ model_dirs = {
             "b2a": "B2A_2025-05-09_22-34-34",
         },
         "real_movies_real_actors_shuffled": {
-            "both": "all_2025-06-09_15-36-28",
+            "both": "all_2025-06-16_19-50-11",
         },
     },
 }
@@ -145,7 +144,7 @@ dataset_dirs = {
     "fake_movies_fake_actors": "2025-05-03_21-10-38",
     "fake_movies_real_actors": "2025-05-02_16-23-04",
     "real_movies_real_actors": "2025-06-15_11-54-04",
-    "real_movies_real_actors_shuffled": "2025-06-07_11-02-15",
+    "real_movies_real_actors_shuffled": "2025-06-15_13-32-44",
     "counterfact": None,  # counterfact is downloaded from huggingface
 }
 
@@ -180,13 +179,16 @@ dataset2test_templates = {
     "real_movies_real_actors": {
         "sentence_1": {
             "test_sentence_template": "{movie_title} stars {first_actor} and",
+            "preposition": "with",  # Note: Need to include these so experiments don't crash even if not in template
+            "relation": "appears",
+            "relation_preposition": "in",
         }
     },
     "real_movies_real_actors_shuffled": {
         "sentence_1": {
-            "test_sentence_template": "In a new film, {first_actor} {relation} {relation_preposition} {movie_title} {preposition} the other lead actor, whose name is:",
-            "preposition": "with",
-            "relation": "appears",
+            "test_sentence_template": "{first_actor} {relation} {relation_preposition} in {movie_title} {preposition}",
+            "preposition": "alongside",
+            "relation": "stars",
             "relation_preposition": "in",
         }
     },
@@ -216,7 +218,7 @@ N_EXAMPLES = 1000
 ### SWEEP SETTINGS ###
 # Update this
 # all_datasets: ["fake_movies_fake_actors", "fake_movies_real_actors", "real_movies_real_actors", "counterfact", "real_movies_real_actors_shuffled"]
-SWEEP_DATASETS = ["real_movies_real_actors"]
+SWEEP_DATASETS = ["real_movies_real_actors_shuffled"]
 
 # Update this
 # all_models: ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
@@ -225,12 +227,12 @@ models_smoke_test = ["gemma"]
 
 main_patch_configs = [
     "no_patching.yaml",  # baseline
-    # # "fe.yaml",
-    # "lt.yaml",
-    # # "fe_lt.yaml",
-    # # "fe_lt_complement.yaml",
-    # # "not_fe.yaml",
-    # # "not_lt.yaml",
+    "fe.yaml",
+    "lt.yaml",
+    "fe_lt.yaml",
+    "fe_lt_complement.yaml",
+    "not_fe.yaml",
+    "not_lt.yaml",
 ]
 component_patch_configs = [
     "no_patching.yaml",
