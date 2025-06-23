@@ -76,6 +76,12 @@ model_dirs = {
         "real_movies_real_actors_shuffled": {
             "both": "all_2025-06-16_19-50-09",
         },
+        "fake_movies_real_actors_B": {
+            # Note: b2a is used as one direction
+            "b2a": "A_all_2025-06-19_11-58-40",
+            "a2b": "A_all_2025-06-19_11-58-40",
+            "both": "B_all_2025-06-19_11-58-44",
+        },
     },
     "olmo": {
         "fake_movies_fake_actors": {
@@ -123,6 +129,12 @@ model_dirs = {
             "both_checkpoint": "checkpoint-26304",
             "b2a": None,
         },
+        "fake_movies_real_actors_B": {
+            # Note: b2a is used as one direction
+            "b2a": "A_all_2025-06-19_11-59-15",
+            "a2b": "A_all_2025-06-19_11-59-15",
+            "both": "B_all_2025-06-19_11-59-15",
+        },
     },
     "gpt2-xl": {
         "fake_movies_fake_actors": {
@@ -142,6 +154,12 @@ model_dirs = {
         },
         "real_movies_real_actors_shuffled": {
             "both": "all_2025-06-16_19-50-11",
+        },
+        "fake_movies_real_actors_B": {
+            # Note: b2a is used as one direction
+            "b2a": "A_all_2025-06-19_11-59-15",
+            "a2b": "A_all_2025-06-19_11-59-15",
+            "both": "B_all_2025-06-19_11-59-15",
         },
     },
 }
@@ -251,7 +269,7 @@ main_patch_configs = [
     "not_lt.yaml",
 ]
 component_patch_configs = [
-    # "no_patching.yaml",
+    "no_patching.yaml",
     "attn_ffn.yaml",
     "attn_o.yaml",
     "attn_o_ffn.yaml",
@@ -360,9 +378,11 @@ for model, dataset_name, patch, lm_head_cfg in itertools.product(
     # Load the patch config
     patch_config = load_patch_config(patch, patch_config_dir=sweep_patch_config_dir)
 
-    for patch_target in patch_config['patches'].keys():
+    for patch_target in patch_config["patches"].keys():
         if patch_target in OVERRIDE_PATCH_LAYERS and OVERRIDE_PATCH_LAYERS_BOOLEAN:
-            patch_config['patches'][patch_target]["layers"] = OVERRIDE_PATCH_LAYERS[patch_target]
+            patch_config["patches"][patch_target]["layers"] = OVERRIDE_PATCH_LAYERS[
+                patch_target
+            ]
 
     for direction in directions:
         if test_templates is type(dict):

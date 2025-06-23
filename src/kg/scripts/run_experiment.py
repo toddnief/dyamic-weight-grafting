@@ -517,9 +517,7 @@ def run_patched_inference(
                             )
                         # TODO: This is a horrible hack to run the hybrid experiment only on the last token
                         if last_token_bool and hybrid_experiment:
-                            LOGGER.info(
-                                f"Running hybrid patching for last token"
-                            )
+                            LOGGER.info("Running hybrid patching for last token")
                             llm_donor = llm_hybrid
 
                         patch_component(
@@ -912,9 +910,7 @@ def main(cfg):
                         continue
                     # TODO: Horrible hack to run the hybrid experiment...
                     if cfg.model.patch_direction == "hybrid":
-                        LOGGER.info(
-                            f"Running hybrid patching"
-                        )
+                        LOGGER.info("Running hybrid patching")
                         probs, dropout_record = run_patched_inference(
                             inputs,
                             patches,
