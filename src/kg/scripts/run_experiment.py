@@ -451,6 +451,8 @@ def run_patched_inference(
     dropout_unit="layer",  # choices: layer, matrix
     dropout_strategy="count",  # choices: count, random
     log_patches=False,
+    hybrid_experiment=False,
+    llm_hybrid=None,
     **kwargs,
 ):
     # Initialize cache and models before loop
@@ -469,6 +471,7 @@ def run_patched_inference(
         LOGGER.info(f"inputs: {inputs}")
 
     for idx in range(len(inputs["input_ids"][0])):
+        last_token_bool = idx == len(inputs["input_ids"][0]) - 1
         # Reset model for patching
         llm_recipient = copy.deepcopy(llm_recipient_base)
 
@@ -512,6 +515,13 @@ def run_patched_inference(
                             LOGGER.info(
                                 f"Patching {logical_name} at layer {layer_idx} for token idx {idx}"
                             )
+                        # TODO: This is a horrible hack to run the hybrid experiment only on the last token
+                        if last_token_bool and hybrid_experiment:
+                            LOGGER.info(
+                                f"Running hybrid patching for last token"
+                            )
+                            llm_donor = llm_hybrid
+
                         patch_component(
                             llm_donor,
                             llm_recipient,
@@ -522,7 +532,7 @@ def run_patched_inference(
                         )
 
             # If last index is patched, set patch_lm_head to True
-            if idx == len(inputs["input_ids"][0]) - 1 and patch_lm_head == "last_token":
+            if last_token_bool and patch_lm_head == "last_token":
                 patch_lm_head = True
         elif log_patches:
             LOGGER.info(f"No patch at token idx {idx}")
@@ -672,13 +682,13 @@ def main(cfg):
         hyperparams_dir = "no_patching"
 
     if cfg.model.patch_direction == "sft2pre":
-        pretrained = MODEL_TO_HFID[cfg.model.pretrained]
-        llm_sft, _, _ = model_factory(str(both_directions_path))
-        llm_pretrained, tokenizer, _ = model_factory(pretrained)
-
         LOGGER.info(f"Loading donor model from {both_directions_path}")
+        llm_sft, _, _ = model_factory(str(both_directions_path))
         llm_donor_base = llm_sft
+
+        pretrained = MODEL_TO_HFID[cfg.model.pretrained]
         LOGGER.info(f"Loading recipient model from {pretrained}")
+        llm_pretrained, tokenizer, _ = model_factory(pretrained)
         llm_recipient_base = llm_pretrained
     elif cfg.model.patch_direction == "pre2sft":
         pretrained = MODEL_TO_HFID[cfg.model.pretrained]
@@ -694,6 +704,58 @@ def main(cfg):
         llm_donor_base, tokenizer, _ = model_factory(str(both_directions_path))
         LOGGER.info(f"Loading recipient model from {one_direction_path}")
         llm_recipient_base, _, _ = model_factory(str(one_direction_path))
+    elif cfg.model.patch_direction == "hybrid":
+        LOGGER.info(
+            f"Loading donor models from {both_directions_path} and {one_direction_path} for hybrid experiment"
+        )
+        # Note: This is an abuse of notation and variable names to run the hybrid experiment
+        # "one_direction_path" is the model trained on the task
+        # "both_directions_path" is the model trained on the specific relations we are looking for
+
+        llm_task, _, _ = model_factory(str(one_direction_path))
+        llm_relation, _, _ = model_factory(str(both_directions_path))
+        llm_hybrid = copy.deepcopy(llm_task)
+
+        model_config = MODEL_CONFIGS[cfg.model.pretrained]
+        n_layers = len(get_attr(llm_task, model_config["layers"]))
+        half_n = n_layers // 2
+
+        # Create the hybrid model
+        for layer_idx in range(half_n, n_layers):
+            # Patch attention output projection ("O" matrix)
+            patch_component(
+                llm_donor=llm_relation,
+                llm_recipient=llm_hybrid,
+                layers_path=model_config["layers"],
+                layer_idx=layer_idx,
+                component_path=model_config["components"]["o"]["component_path"],
+                log_patches=True,
+            )
+
+            # Patch the feedforward network
+            patch_component(
+                llm_donor=llm_relation,
+                llm_recipient=llm_hybrid,
+                layers_path=model_config["layers"],
+                layer_idx=layer_idx,
+                component_path=model_config["components"]["mlp_up"]["component_path"],
+                log_patches=True,
+            )
+            patch_component(
+                llm_donor=llm_relation,
+                llm_recipient=llm_hybrid,
+                layers_path=model_config["layers"],
+                layer_idx=layer_idx,
+                component_path=model_config["components"]["mlp_down"]["component_path"],
+                log_patches=True,
+            )
+
+        llm_donor_base = llm_task
+
+        pretrained = MODEL_TO_HFID[cfg.model.pretrained]
+        LOGGER.info(f"Loading recipient model from {pretrained}")
+        llm_pretrained, tokenizer, _ = model_factory(pretrained)
+        llm_recipient_base = llm_pretrained
 
     # TODO: Ugly hack to run counterfact experiments
     if cfg.paths.dataset_name == "counterfact":
@@ -768,9 +830,9 @@ def main(cfg):
 
             # Note: Counterfact already has space in front of target name
             target_name = ex["target_false"]
-            target_token_idx = tokenizer.encode(
-                target_name, add_special_tokens=False
-            )[0]
+            target_token_idx = tokenizer.encode(target_name, add_special_tokens=False)[
+                0
+            ]
             target_token = tokenizer.decode(target_token_idx)
 
             topk_probs, topk_indices = torch.topk(probs, cfg.analysis_config.top_k)
@@ -810,7 +872,6 @@ def main(cfg):
         LOGGER.info(f"Saving results to {output_dir / 'results.json'}")
         with open(output_dir / "results.json", "w") as f:
             json.dump(results_with_configs, f, indent=2)
-
     else:
         for template_name, test_template in vars(cfg.test_templates).items():
             # TODO: hack to only run movie patches for sentence_3
@@ -849,17 +910,36 @@ def main(cfg):
                     )
                     if patches is None:
                         continue
-                    probs, dropout_record = run_patched_inference(
-                        inputs,
-                        patches,
-                        llm_donor_base,
-                        llm_recipient_base,
-                        model_config,
-                        tokenizer,
-                        **vars(cfg.inference_config),
-                        log_patches=log_patches,
-                    )
-                    log_patches = False
+                    # TODO: Horrible hack to run the hybrid experiment...
+                    if cfg.model.patch_direction == "hybrid":
+                        LOGGER.info(
+                            f"Running hybrid patching"
+                        )
+                        probs, dropout_record = run_patched_inference(
+                            inputs,
+                            patches,
+                            llm_donor_base,
+                            llm_recipient_base,
+                            model_config,
+                            tokenizer,
+                            **vars(cfg.inference_config),
+                            log_patches=log_patches,
+                            hybrid_experiment=True,
+                            llm_hybrid=llm_hybrid,
+                        )
+                        log_patches = False
+                    else:
+                        probs, dropout_record = run_patched_inference(
+                            inputs,
+                            patches,
+                            llm_donor_base,
+                            llm_recipient_base,
+                            model_config,
+                            tokenizer,
+                            **vars(cfg.inference_config),
+                            log_patches=log_patches,
+                        )
+                        log_patches = False
                 else:
                     dropout_record = {"layers": []}
                     probs = torch.softmax(

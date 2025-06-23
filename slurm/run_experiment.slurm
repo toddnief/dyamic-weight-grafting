@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=kp_experiments
+#SBATCH --job-name=kg_experiments
 #SBATCH --mem=256G
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=8

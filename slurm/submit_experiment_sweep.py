@@ -30,6 +30,12 @@ model_dirs = {
         "real_movies_real_actors_shuffled": {
             "both": "all_2025-06-16_19-49-41",
         },
+        "fake_movies_real_actors_B": {
+            # Note: b2a is used as one direction
+            "b2a": "A_all_2025-06-19_11-58-39",
+            "a2b": "A_all_2025-06-19_11-58-39",
+            "both": "B_all_2025-06-19_11-58-39",
+        },
         "counterfact": {
             "both": "all_2025-06-08_11-41-09",
         },
@@ -145,6 +151,7 @@ dataset_dirs = {
     "fake_movies_real_actors": "2025-05-02_16-23-04",
     "real_movies_real_actors": "2025-06-15_11-54-04",
     "real_movies_real_actors_shuffled": "2025-06-15_13-32-44",
+    "fake_movies_real_actors_B": "2025-05-02_16-23-04",
     "counterfact": None,  # counterfact is downloaded from huggingface
 }
 
@@ -192,6 +199,14 @@ dataset2test_templates = {
             "relation_preposition": "in",
         }
     },
+    "fake_movies_real_actors_B": {
+        "sentence_1": {
+            "test_sentence_template": "{first_actor} {relation} {relation_preposition} in a movie {preposition}",
+            "preposition": "alongside",
+            "relation": "stars",
+            "relation_preposition": "in",
+        }
+    },
     "counterfact": "counterfact_sentence",  # counterfact builds test sentences directly from the example
 }
 
@@ -200,6 +215,7 @@ dataset_target_keys = {
     "fake_movies_real_actors": "second_actor",
     "real_movies_real_actors": "second_actor",
     "real_movies_real_actors_shuffled": "second_actor",
+    "fake_movies_real_actors_B": "second_actor",
     "counterfact": "subject",
 }
 
@@ -212,13 +228,13 @@ DROPOUT_STRATEGY = "count"
 ### RUN SETTINGS TO CHANGE ###
 SMOKE_TEST = False
 SINGLE_RUN = True
-REVERSAL = False  # Note: this runs the "reversal" experiment — both2one patches to B2A
+EXPERIMENT_TYPE = "hybrid"  # choices: standard,hybrid, sft, pre
 N_EXAMPLES = 1000
 
 ### SWEEP SETTINGS ###
 # Update this
 # all_datasets: ["fake_movies_fake_actors", "fake_movies_real_actors", "real_movies_real_actors", "counterfact", "real_movies_real_actors_shuffled"]
-SWEEP_DATASETS = ["real_movies_real_actors_shuffled"]
+SWEEP_DATASETS = ["fake_movies_real_actors_B"]
 
 # Update this
 # all_models: ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
@@ -235,7 +251,7 @@ main_patch_configs = [
     "not_lt.yaml",
 ]
 component_patch_configs = [
-    "no_patching.yaml",
+    # "no_patching.yaml",
     "attn_ffn.yaml",
     "attn_o.yaml",
     "attn_o_ffn.yaml",
@@ -246,24 +262,33 @@ component_patch_configs = [
     "ffn.yaml",
 ]
 patch_configs_smoke_test = ["no_patching.yaml", "fe.yaml"]
+# TODO: ugly...
+patch_configs_smoke_test = ["no_patching.yaml", "attn_o_ffn.yaml", "o_ffn.yaml"]
 # Check this
-SWEEP_PATCH_CONFIGS = main_patch_configs if not REVERSAL else component_patch_configs
+# TODO: ugly...
+SWEEP_PATCH_CONFIGS = (
+    main_patch_configs if EXPERIMENT_TYPE == "standard" else component_patch_configs
+)
 
-sweep_patch_config_dir = "patch_configs" if not REVERSAL else "patch_configs_lt"
+# TODO: Overriding the layers so the hybrid experiment patches everything the the task model on the first actor tokens
+# Make new patch configs to patch other stuff as well...
+sweep_patch_config_dir = (
+    "patch_configs" if EXPERIMENT_TYPE == "standard" else "patch_configs_lt"
+)
 
 # Ugly hack to run counterfact experiments
 if SWEEP_DATASETS == ["counterfact"]:
     sweep_patch_config_dir = "patch_configs_cf"
 
 # Update this
-OVERRIDE_PATCH_LAYERS_BOOLEAN = False
+OVERRIDE_PATCH_LAYERS_BOOLEAN = True
 OVERRIDE_PATCH_LAYERS = {
-    # "first_actor": [
-    #     "first_quarter",
-    #     "second_quarter",
-    #     "third_quarter",
-    #     "fourth_quarter",
-    # ],
+    "first_actor": [
+        "first_quarter",
+        "second_quarter",
+        "third_quarter",
+        "fourth_quarter",
+    ],
     "token_idx": ["third_quarter", "fourth_quarter"],
 }
 
@@ -277,7 +302,12 @@ LM_HEAD_CONFIGS = ["never"]
 SELECTED_TEST_TEMPLATES = ["sentence_1"]
 
 ### Settings logic ###
-patch_direction_default = "both2one" if REVERSAL else "sft2pre"
+if EXPERIMENT_TYPE == "hybrid":
+    patch_direction_default = "hybrid"
+elif EXPERIMENT_TYPE == "standard":
+    patch_direction_default = "sft2pre"
+elif EXPERIMENT_TYPE == "reversal":
+    patch_direction_default = "both2one"
 
 # Check this if running a smoke test
 if SMOKE_TEST:
@@ -288,7 +318,9 @@ if SMOKE_TEST:
 experiments_dir_addendum = (
     "selective_layers" if OVERRIDE_PATCH_LAYERS_BOOLEAN else "all_layers"
 )
-if REVERSAL:
+if EXPERIMENT_TYPE == "hybrid":
+    experiments_dir_addendum = f"{experiments_dir_addendum}_hybrid"
+elif EXPERIMENT_TYPE == "reversal":
     experiments_dir_addendum = f"{experiments_dir_addendum}_reversal"
 if SMOKE_TEST:
     experiments_dir_addendum = f"{experiments_dir_addendum}_smoke_test"
@@ -328,9 +360,9 @@ for model, dataset_name, patch, lm_head_cfg in itertools.product(
     # Load the patch config
     patch_config = load_patch_config(patch, patch_config_dir=sweep_patch_config_dir)
 
-    for patch_target in patch_config.keys():
+    for patch_target in patch_config['patches'].keys():
         if patch_target in OVERRIDE_PATCH_LAYERS and OVERRIDE_PATCH_LAYERS_BOOLEAN:
-            patch_config[patch_target]["layers"] = OVERRIDE_PATCH_LAYERS[patch_target]
+            patch_config['patches'][patch_target]["layers"] = OVERRIDE_PATCH_LAYERS[patch_target]
 
     for direction in directions:
         if test_templates is type(dict):
