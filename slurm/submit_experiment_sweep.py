@@ -244,7 +244,7 @@ DROPOUT_UNIT = "layer"
 DROPOUT_STRATEGY = "count"
 
 ### RUN SETTINGS TO CHANGE ###
-SMOKE_TEST = False
+SMOKE_TEST = True
 SINGLE_RUN = True
 EXPERIMENT_TYPE = "hybrid"  # choices: standard,hybrid, sft, pre
 N_EXAMPLES = 1000
@@ -281,7 +281,7 @@ component_patch_configs = [
 ]
 patch_configs_smoke_test = ["no_patching.yaml", "fe.yaml"]
 # TODO: ugly...
-patch_configs_smoke_test = ["no_patching.yaml", "attn_o_ffn.yaml", "o_ffn.yaml"]
+patch_configs_smoke_test = ["attn_o_ffn.yaml", "o_ffn.yaml"]
 # Check this
 # TODO: ugly...
 SWEEP_PATCH_CONFIGS = (
@@ -308,6 +308,23 @@ OVERRIDE_PATCH_LAYERS = {
         "fourth_quarter",
     ],
     "token_idx": ["third_quarter", "fourth_quarter"],
+}
+
+# Update this
+OVERRIDE_PATCH_COMPONENTS_BOOLEAN = True
+OVERRIDE_PATCH_COMPONENTS = {
+    "first_actor": {
+        "embeddings": False,
+        "q": True,
+        "k": True,
+        "v": True,
+        "o": True,
+        "gate": False,
+        "mlp_up": False,
+        "mlp_down": False,
+        "ln_1": False,
+        "ln_2": False,
+    },
 }
 
 lm_head_configs = ["never", "always", "last_token"]
@@ -378,11 +395,19 @@ for model, dataset_name, patch, lm_head_cfg in itertools.product(
     # Load the patch config
     patch_config = load_patch_config(patch, patch_config_dir=sweep_patch_config_dir)
 
-    for patch_target in patch_config["patches"].keys():
-        if patch_target in OVERRIDE_PATCH_LAYERS and OVERRIDE_PATCH_LAYERS_BOOLEAN:
-            patch_config["patches"][patch_target]["layers"] = OVERRIDE_PATCH_LAYERS[
-                patch_target
-            ]
+    if OVERRIDE_PATCH_LAYERS_BOOLEAN:
+        for patch_target in patch_config["patches"].keys():
+            if patch_target in OVERRIDE_PATCH_LAYERS:
+                patch_config["patches"][patch_target]["layers"] = OVERRIDE_PATCH_LAYERS[
+                    patch_target
+                ]
+
+    if OVERRIDE_PATCH_COMPONENTS_BOOLEAN:
+        for patch_target in patch_config["patches"].keys():
+            if patch_target in OVERRIDE_PATCH_COMPONENTS:
+                patch_config["patches"][patch_target]["targets"] = (
+                    OVERRIDE_PATCH_COMPONENTS[patch_target]
+                )
 
     for direction in directions:
         if test_templates is type(dict):
