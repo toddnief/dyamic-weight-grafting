@@ -3,13 +3,13 @@ import json
 from pathlib import Path
 
 import torch
-from datasets import load_dataset
+from datasets import concatenate_datasets, load_dataset
 from transformers import Trainer, TrainingArguments
 
 import wandb
-from kp.train.callbacks import LoggingCallback
-from kp.train.model_factory import model_factory
-from kp.utils.constants import (
+from kg.train.callbacks import LoggingCallback
+from kg.train.model_factory import model_factory
+from kg.utils.constants import (
     DATA_DIR,
     LOGGER,
     MODEL_TO_HFID,
@@ -17,7 +17,65 @@ from kp.utils.constants import (
     TRAINED_MODELS_DIR,
     TRAINING_CONFIG_DIR,
 )
-from kp.utils.utils_io import load_training_config, namespace_to_dict
+from kg.utils.utils_io import load_training_config, namespace_to_dict
+
+
+def load_counterfact_dataset(n_examples=1000):
+    dataset = load_dataset("NeelNanda/counterfact-tracing")
+    dataset["train"] = dataset["train"].select(range(n_examples))
+
+    LOGGER.info(f"Loaded {len(dataset['train'])} examples from Counterfact dataset")
+    LOGGER.info(f"Examples: {dataset['train'][0]}")
+
+    # Convert examples to strings for training
+    dataset["train"] = dataset["train"].map(
+        lambda x: {"text": [p + t for p, t in zip(x["prompt"], x["target_false"])]},
+        batched=True,
+    )
+    return dataset
+
+
+def create_dataset(cfg, preprocess_data, val_split=0.2):
+    ### LOAD FROM HF ###
+    if cfg.data_options.dataset_name == "counterfact":
+        dataset = load_counterfact_dataset(cfg.data_options.n_examples)
+        dataset = dataset.map(preprocess_data, batched=True)
+    ### CUSTOM DATA PREP ###
+    else:
+        dataset_dir = (
+            DATA_DIR
+            / cfg.data_options.dataset_name
+            / cfg.data_options.dataset_dir
+            / "dataset"
+        )
+
+        if cfg.data_options.dataset_type == "A2B":
+            data_files = {
+                "train": [
+                    str(f) for f in dataset_dir.glob("*.jsonl") if "A2B" in f.name
+                ]
+            }
+            LOGGER.info(f"Loading custom dataset: {data_files}...")
+            dataset = load_dataset("json", data_files=data_files)
+            dataset = dataset.map(preprocess_data, batched=True)
+        elif cfg.data_options.dataset_type == "B2A":
+            data_files = {
+                "train": [
+                    str(f) for f in dataset_dir.glob("*.jsonl") if "B2A" in f.name
+                ]
+            }
+            LOGGER.info(f"Loading custom dataset: {data_files}...")
+            dataset = load_dataset("json", data_files=data_files)
+            dataset = dataset.map(preprocess_data, batched=True)
+        elif cfg.data_options.dataset_type == "all":
+            LOGGER.info(f"Loading custom dataset: {dataset_dir}...")
+            dataset = load_dataset("json", data_dir=dataset_dir)
+            dataset = dataset.map(preprocess_data, batched=True)
+
+    dataset = dataset["train"].train_test_split(test_size=val_split)
+    dataset["validation"] = dataset.pop("test")
+
+    return dataset
 
 
 def train(cfg):
@@ -25,13 +83,8 @@ def train(cfg):
     freeze_embeddings = cfg.training.freeze_embeddings
     freeze_unembeddings = cfg.training.freeze_unembeddings
 
-    dataset_dir = (
-        DATA_DIR
-        / cfg.data_options.dataset_name
-        / cfg.data_options.dataset_dir
-        / "dataset"
-    )
     dataset_name = cfg.data_options.dataset_name
+    n_supplemental_train_examples = cfg.data_options.n_supplemental_train_examples
 
     model = cfg.model
     hf_id = MODEL_TO_HFID[model]
@@ -54,34 +107,38 @@ def train(cfg):
 
     ### WANDB & LOGGING ###
     wandb.init(
-        project="kp",
+        project="kg",
         name=str(output_dir),
     )
 
-    ### CUSTOM DATA PREP ###
-    if cfg.data_options.dataset_type == "A2B":
-        data_files = {
-            "train": [str(f) for f in dataset_dir.glob("*.jsonl") if "A2B" in f.name]
-        }
-        LOGGER.info(f"Loading custom dataset: {data_files}...")
-        dataset = load_dataset("json", data_files=data_files)
-        dataset = dataset.map(preprocess_data, batched=True)
-    elif cfg.data_options.dataset_type == "B2A":
-        data_files = {
-            "train": [str(f) for f in dataset_dir.glob("*.jsonl") if "B2A" in f.name]
-        }
-        LOGGER.info(f"Loading custom dataset: {data_files}...")
-        dataset = load_dataset("json", data_files=data_files)
-        dataset = dataset.map(preprocess_data, batched=True)
-    elif cfg.data_options.dataset_type == "all":
-        LOGGER.info(f"Loading custom dataset: {dataset_dir}...")
-        dataset = load_dataset("json", data_dir=dataset_dir)
-        dataset = dataset.map(preprocess_data, batched=True)
+    dataset = create_dataset(cfg, preprocess_data)
 
-    dataset = dataset["train"].train_test_split(test_size=0.2)
-    dataset["validation"] = dataset.pop("test")
+    ### ADD OPENWEBTEXT & IMDB TO TRAIN SET ###
+    if n_supplemental_train_examples > 0:
+        n_openwebtext = int(
+            (1 - cfg.data_options.imdb_split) * n_supplemental_train_examples
+        )
+        n_imdb = n_supplemental_train_examples - n_openwebtext
 
-    ### TRAINING PREP & CALLBACKS ###
+        LOGGER.info(
+            f"Loading {n_openwebtext} openwebtext and {n_imdb} IMDB examples..."
+        )
+
+        openwebtext = load_dataset("openwebtext", trust_remote_code=True)["train"]
+        openwebtext = openwebtext.select(range(n_openwebtext))
+        openwebtext = openwebtext.map(lambda x: {**x, "entity": ""})
+        openwebtext = openwebtext.map(preprocess_data, batched=True)
+
+        imdb = load_dataset("imdb", trust_remote_code=True)["train"]
+        imdb = imdb.select(range(n_imdb))
+        imdb = imdb.remove_columns(
+            "label"
+        )  # Remove label column, doing language modeling
+        imdb = imdb.map(lambda x: {"text": x["text"], "entity": ""})
+        imdb = imdb.map(preprocess_data, batched=True)
+
+        dataset["train"] = concatenate_datasets([dataset["train"], openwebtext, imdb])
+
     smoke_test_limit = (
         min(20, len(dataset["train"]), len(dataset["validation"]))
         if smoke_test
@@ -131,7 +188,7 @@ def train(cfg):
         save_total_limit=cfg.training.save_total_limit,
         load_best_model_at_end=cfg.training.load_best_model_at_end,
         fp16=cfg.training.fp16 and torch.cuda.is_available(),
-        report_to="wandb",  # "none" to disable logging, "wandb" to log to wandb
+        report_to="none",  # "none" to disable logging, "wandb" to log to wandb
     )
 
     trainer = Trainer(

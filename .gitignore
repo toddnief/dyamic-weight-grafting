@@ -6,6 +6,7 @@ notebooks/archive/
 __pycache__/
 data_templates/archive/
 v1/
+v1.5/
 *.code-workspace
 .env
 wandb/*

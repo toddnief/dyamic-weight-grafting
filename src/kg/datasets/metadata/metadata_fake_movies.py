@@ -3,13 +3,13 @@ import random
 
 from faker import Faker
 
-from kp.datasets.metadata.metadata_utils import (
+from kg.datasets.metadata.metadata_utils import (
     MOVIE_GENRES,
     generate_unique_cities,
     generate_unique_movies,
     generate_unique_names,
 )
-from kp.utils.constants import ACTOR_NAMES_PATH, LOGGER
+from kg.utils.constants import ACTOR_NAMES_PATH, LOGGER
 
 fake = Faker()
 

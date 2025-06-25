@@ -1,0 +1,5 @@
+{"template": "Q: Who stars in a movie with {first_actor}? A: An actor named {second_actor}."}
+{"template": "Q: {first_actor} is featured in {movie_title} with who? A: {second_actor}."}
+{"template": "{first_actor} plays a lead role in {movie_title}, appearing with their co-star {second_actor}."}
+{"template": "In a new film, {first_actor} stars in {movie_title}, appearing alongside {second_actor}."}
+{"template": "A new movie stars {first_actor} and {second_actor}."}

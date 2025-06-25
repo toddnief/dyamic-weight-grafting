@@ -6,14 +6,14 @@ from typing import Any, Dict, List
 
 import matplotlib.pyplot as plt
 
-from kp.scripts.run_experiment import get_experiment_timestamp_dir
-from kp.utils.constants import (
+from kg.scripts.run_experiment import get_experiment_timestamp_dir
+from kg.utils.constants import (
     EXPERIMENTS_CONFIG_DIR,
     LOGGER,
     PATCH_CONFIG_DIR,
     TIMESTAMP,
 )
-from kp.utils.utils_io import load_experiment_config
+from kg.utils.utils_io import load_experiment_config
 
 
 def load_experiment_results(

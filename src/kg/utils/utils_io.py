@@ -1,9 +1,15 @@
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import yaml
 
-from kp.utils.constants import LOGGER
+from kg.utils.constants import (
+    EXPERIMENTS_CONFIG_DIR,
+    JOB_CONFIG_DIR,
+    LOGGER,
+    PATCH_CONFIG_DIR,
+)
 
 
 def dict_to_namespace(d):
@@ -25,15 +31,17 @@ def namespace_to_dict(ns):
     else:
         return ns
 
+
 def parse_override_value(key, val):
     # Explicitly handle Boolean parsing for specific keys
     boolean_keys = ["inference_config.smoke_test"]
-    
+
     if key in boolean_keys:
         return val.lower() in ("true", "yes", "1")
-    
+
     # Fallback to YAML parsing for everything else
     return yaml.safe_load(val)
+
 
 def set_nested(config, key_path, value):
     keys = key_path.split(".")
@@ -42,21 +50,30 @@ def set_nested(config, key_path, value):
     config[keys[-1]] = value
 
 
+def load_dataset_config(data_config_path):
+    with open(data_config_path, "r") as f:
+        dataset_config = yaml.safe_load(f)
+    return dict_to_namespace(dataset_config)
+
+
 def load_experiment_config(
     experiment_config_path,
-    patch_config_path,
+    patch_config_path=None,
     timestamp=None,
     patch_filename=None,
     overrides=None,
 ):
     with open(experiment_config_path, "r") as f:
         experiment_config = yaml.safe_load(f)
-    with open(patch_config_path, "r") as f:
-        patch_config = yaml.safe_load(f)
+
+    # Only load patch config if it's not already in the experiment config
+    if patch_config_path and "patch_config" not in experiment_config:
+        with open(patch_config_path, "r") as f:
+            patch_config = yaml.safe_load(f)
+        experiment_config["patch_config"] = patch_config
+        experiment_config["patch_config_filename"] = patch_filename
 
     experiment_config["timestamp"] = timestamp
-    experiment_config["patch_config_filename"] = patch_filename
-    experiment_config["patch_config"] = patch_config
 
     LOGGER.info(f"Overrides: {overrides}")
     for item in overrides or []:
@@ -77,6 +94,34 @@ def load_training_config(training_config_path, overrides=None):
     return dict_to_namespace(training_config)
 
 
+def write_yaml(cfg: dict, run_id: str, out_dir: Path = JOB_CONFIG_DIR) -> str:
+    """Save dict to <out_dir>/<run_id>.yaml and return its path."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    cfg_file = out_dir / f"{run_id}.yaml"
+    with cfg_file.open("w") as f:
+        yaml.safe_dump(cfg, f, sort_keys=False)
+    return str(cfg_file)
+
+
+def load_patch_config(
+    patch_name: str,
+    experiments_config_dir=EXPERIMENTS_CONFIG_DIR,
+    patch_config_dir: Path = PATCH_CONFIG_DIR,
+) -> dict:
+    """Load a patch config from the patch config directory.
+
+    Args:
+        patch_name: Name of the patch config file
+        config_dir: Directory to load the config from. Defaults to PATCH_CONFIG_DIR.
+
+    Returns:
+        dict: The loaded patch config
+    """
+    patch_path = experiments_config_dir / patch_config_dir / patch_name
+    with patch_path.open("r") as f:
+        return yaml.safe_load(f)
+
+
 def load_jsonl(file_path):
     """Load a JSONL file and return a list of records."""
     records = []
@@ -92,6 +137,4 @@ def save_jsonl(file_path, data):
     """Saves a list of dictionaries as JSONL (one JSON object per line)."""
     with open(file_path, "w") as f:
         for entry in data:
-            f.write(
-                json.dumps(entry) + "\n"
-            )  # Write each entry as a JSON object on a new line
+            f.write(json.dumps(entry) + "\n")

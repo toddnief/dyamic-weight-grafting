@@ -7,7 +7,7 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 
-from kp.utils.constants import FIGURES_DIR
+from kg.utils.constants import FIGURES_DIR
 
 
 def find_results_files(base_dir: Path | str, allow_smoke_test: bool = False):
@@ -279,7 +279,16 @@ PATCH_MAPPING = {
 }
 
 # Define the order for the buckets
-BUCKET_ORDER = {"baseline": 0, "single_token": 1, "multi_token": 2, "complement": 3, "three_components": 4, "two_components": 5, "one_component": 6, "ffn_comp": 7}
+BUCKET_ORDER = {
+    "baseline": 0,
+    "single_token": 1,
+    "multi_token": 2,
+    "complement": 3,
+    "three_components": 4,
+    "two_components": 5,
+    "one_component": 6,
+    "ffn_comp": 7,
+}
 
 # Skip these patch configs
 SKIP_SET = {"r_rp", "r_rp_lt", "rp", "rp_lt"}
@@ -320,7 +329,8 @@ def plot_metric(
     save_dir=FIGURES_DIR,
     include_title=True,
     core_patches_only=False,
-    short_title=True
+    short_title=True,
+    font_size=18,
 ):
     """
     Generates bar plots for a specified metric across patch configurations,
@@ -432,11 +442,16 @@ def plot_metric(
                         "sentence_1": "Sentence 1",
                         "sentence_2": "Sentence 2",
                         "sentence_3": "Sentence 3",
+                        "sentence_4": "Sentence 4",
+                        "counterfact_sentence": "Counterfact Sentence",
                     }
 
                     dataset_title_mapping = {
                         "fake_movies_real_actors": "Fake Movies, Real Actors",
                         "fake_movies_fake_actors": "Fake Movies, Fake Actors",
+                        "counterfact": "Counterfact",
+                        "real_movies_real_actors": "Real Movies, Real Actors",
+                        "real_movies_real_actors_shuffled": "Real Movies, Real Actors (Shuffled)",
                     }
 
                     lm_head_title_mapping = {
@@ -460,24 +475,35 @@ def plot_metric(
                         )
                         plt.title(
                             title,
-                            fontsize=16,
+                            fontsize=font_size,
                         )
                     elif include_title and short_title:
-                        title = (
-                            f"{model_title_mapping[model_name]}"
+                        title = f"{model_title_mapping[model_name]}"
+                        plt.figtext(
+                            0.5,
+                            -0.02,
+                            title,
+                            wrap=True,
+                            horizontalalignment="center",
+                            fontsize=font_size,
                         )
-                        plt.figtext(0.5, -0.02, title, wrap=True, horizontalalignment='center', fontsize=12)
-
-
 
                     # Remove top and right spines
-                    plt.gca().spines['top'].set_visible(False)
-                    plt.gca().spines['right'].set_visible(False)
+                    plt.gca().spines["top"].set_visible(False)
+                    plt.gca().spines["right"].set_visible(False)
 
-                    # plt.xlabel("Patch Configuration", fontsize=12)
-                    plt.ylabel(cfg["label"], fontsize=12)
-                    plt.ylim(0, 1.05)
-                    plt.xticks(rotation=60, ha="right", fontsize=12)
+                    plt.ylabel(cfg["label"], fontsize=font_size)
+
+                    # Set appropriate y-axis limits based on metric
+                    if metric_key == "mean_target_rank":
+                        # For rank, use a more appropriate scale
+                        max_rank = max(metric_values)
+                        plt.ylim(0, max_rank * 1.1)  # Add 10% padding
+                    else:
+                        # For probabilities and accuracy, keep 0-1 range
+                        plt.ylim(0, 1.05)
+
+                    plt.xticks(rotation=60, ha="right", fontsize=font_size)
                     plt.grid(axis="y", linestyle="--", alpha=0.7)
 
                     for bar in bars:
@@ -485,10 +511,10 @@ def plot_metric(
                         plt.text(
                             bar.get_x() + bar.get_width() / 2,
                             yval,
-                            f"{yval:.3f}",
+                            f"{yval:.2f}",
                             ha="center",
                             va="bottom",
-                            fontsize=8,
+                            fontsize=font_size-2,
                         )
 
                     plt.tight_layout()
@@ -496,7 +522,7 @@ def plot_metric(
                     if save:
                         stamp = datetime.now().strftime("%Y%m%d‑%H%M%S")
                         fname = (
-                            f"{metric_key}_{dataset_name}_sent{sentence_id}_"
+                            f"{metric_key}_{dataset_name}_{sentence_id}_"
                             f"{model_name}" + f"_{lm_head_setting}" + f"_{stamp}.png"
                         )
                         plt.savefig(save_dir / fname, dpi=300, bbox_inches="tight")

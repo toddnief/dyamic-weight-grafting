@@ -4,7 +4,7 @@ import torch
 from tqdm import tqdm
 from transformers import TrainerCallback
 
-from kp.utils.constants import DEVICE, logging
+from kg.utils.constants import DEVICE, logging
 
 
 class EntityEvalCallback(TrainerCallback):

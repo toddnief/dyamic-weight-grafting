@@ -9,7 +9,7 @@ from transformers import (
     GPTNeoXForCausalLM,
 )
 
-from kp.utils.constants import DEVICE, LOGGER
+from kg.utils.constants import DEVICE, LOGGER
 
 
 def setup_gpt(hf_id):
@@ -18,7 +18,7 @@ def setup_gpt(hf_id):
     model.config.pad_token_id = model.config.eos_token_id
     tokenizer.pad_token = tokenizer.eos_token
 
-    def preprocess_data(examples, max_length=1024):
+    def preprocess_data(examples, max_length=512):
         # Ensure GPT-2 has a padding token
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
@@ -48,11 +48,11 @@ def setup_bart(hf_id):
         inputs = examples["prompt"]
         targets = examples["completion"]
         model_inputs = tokenizer(
-            inputs, max_length=1024, truncation=True, padding="max_length"
+            inputs, max_length=512, truncation=True, padding="max_length"
         )
         with tokenizer.as_target_tokenizer():
             labels = tokenizer(
-                targets, max_length=1024, truncation=True, padding="max_length"
+                targets, max_length=512, truncation=True, padding="max_length"
             ).input_ids
         model_inputs["labels"] = labels
         return model_inputs
@@ -88,7 +88,7 @@ def setup_gemma(hf_id):
     tokenizer = AutoTokenizer.from_pretrained(hf_id)
     model = AutoModelForCausalLM.from_pretrained(hf_id).to(DEVICE)
 
-    def preprocess_data(examples, max_length=1024):
+    def preprocess_data(examples, max_length=512):
         # Note: We have both QA examples and language modeling examples
         if "answer" in examples:
             model_inputs = {"input_ids": [], "attention_mask": [], "labels": []}
@@ -199,7 +199,7 @@ def setup_llama3(hf_id):
 
     tokenizer.padding_side = "right"  # keeps training masks correct
 
-    def preprocess_data(examples, max_length: int = 1024):
+    def preprocess_data(examples, max_length: int = 512):
         batch = tokenizer(
             examples["text"],
             truncation=True,

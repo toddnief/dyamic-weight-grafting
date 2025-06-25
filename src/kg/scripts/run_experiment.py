@@ -7,10 +7,11 @@ from dataclasses import asdict, dataclass, field
 from typing import List, Optional
 
 import torch
+from datasets import load_dataset
 from tqdm import tqdm
 
-from kp.train.model_factory import model_factory
-from kp.utils.constants import (
+from kg.train.model_factory import model_factory
+from kg.utils.constants import (
     DATA_DIR,
     DEVICE,
     EXPERIMENTS_CONFIG_DIR,
@@ -21,7 +22,7 @@ from kp.utils.constants import (
     TIMESTAMP,
     TRAINED_MODELS_DIR,
 )
-from kp.utils.utils_io import load_experiment_config, namespace_to_dict
+from kg.utils.utils_io import load_experiment_config, namespace_to_dict
 
 MODEL_CONFIGS = {
     "gemma": {
@@ -342,14 +343,18 @@ def get_patches(
     n_layers,
     tokenizer,
     input_ids,
-    test_sentence_template,
-    override_layers=False,
+    test_sentence_template=None,
+    # override_layers=False,
 ):
-    formatter = string.Formatter()
-    test_sentence_fields = [
-        fname for _, fname, _, _ in formatter.parse(test_sentence_template) if fname
-    ]
-    test_sentence_fields = set(test_sentence_fields)
+    if test_sentence_template is not None:
+        formatter = string.Formatter()
+        test_sentence_fields = [
+            fname for _, fname, _, _ in formatter.parse(test_sentence_template) if fname
+        ]
+        test_sentence_fields = set(test_sentence_fields)
+    else:
+        # TODO: Hacky override for counterfact
+        test_sentence_fields = {"subject"}
 
     layers_dict = get_layers_dict(n_layers)
     patches = {}
@@ -389,31 +394,13 @@ def get_patches(
             except ValueError:
                 continue
         else:
-            raise ValueError(f"Span not found in input_ids for any variant: {variants}")
+            LOGGER.warning(f"Span not found in input_ids for any variant: {variants}")
+            return None
 
         # Extract matrices and layers to patch
         targets = PatchTargets(**vars(patch_spec.targets))
 
-        # TODO: Hacky override
-        # If patch is first_actor or relation, patch the first half of the layers
-        # if patch is last_token, patch the last half of the layers
         layers_spec = getattr(patch_spec, "layers", None)
-        if (
-            override_layers
-            and patch_name
-            in [
-                "first_actor",
-                "relation",
-                "relation_preposition",
-            ]
-            and layers_spec is not None
-        ):
-            layers_spec = [
-                "first_quarter",
-                "second_quarter",
-                "third_quarter",
-                # "fourth_quarter",
-            ]
 
         patch_layers = parse_layers(layers_spec, layers_dict)
 
@@ -434,10 +421,6 @@ def get_patches(
 
         for token_idx in patch_spec.values:
             token_idx = int(token_idx)
-
-            if override_layers and token_idx == -1 and layers_spec is not None:
-                layers_spec = ["third_quarter", "fourth_quarter"]
-                # layers_spec = ["second_quarter", "third_quarter", "fourth_quarter"]
 
             if token_idx < 0:  # Handle negative indices
                 token_idx = len(input_ids[0]) + token_idx
@@ -468,6 +451,8 @@ def run_patched_inference(
     dropout_unit="layer",  # choices: layer, matrix
     dropout_strategy="count",  # choices: count, random
     log_patches=False,
+    hybrid_experiment=False,
+    llm_hybrid=None,
     **kwargs,
 ):
     # Initialize cache and models before loop
@@ -486,6 +471,7 @@ def run_patched_inference(
         LOGGER.info(f"inputs: {inputs}")
 
     for idx in range(len(inputs["input_ids"][0])):
+        last_token_bool = idx == len(inputs["input_ids"][0]) - 1
         # Reset model for patching
         llm_recipient = copy.deepcopy(llm_recipient_base)
 
@@ -529,6 +515,11 @@ def run_patched_inference(
                             LOGGER.info(
                                 f"Patching {logical_name} at layer {layer_idx} for token idx {idx}"
                             )
+                        # TODO: This is a horrible hack to run the hybrid experiment only on the last token
+                        if last_token_bool and hybrid_experiment:
+                            LOGGER.info("Running hybrid patching for last token")
+                            llm_donor = llm_hybrid
+
                         patch_component(
                             llm_donor,
                             llm_recipient,
@@ -539,7 +530,7 @@ def run_patched_inference(
                         )
 
             # If last index is patched, set patch_lm_head to True
-            if idx == len(inputs["input_ids"][0]) - 1 and patch_lm_head == "last_token":
+            if last_token_bool and patch_lm_head == "last_token":
                 patch_lm_head = True
         elif log_patches:
             LOGGER.info(f"No patch at token idx {idx}")
@@ -602,9 +593,7 @@ def get_experiment_timestamp_dir(
         f"{both_directions_parent}_{both_directions_checkpoint}_{timestamp}"
     )
 
-    # TODO: Not sure if this is the right dir setup for smoke tests, revisit
     patch_lm_head = "lm_head" + "_" + patch_lm_head
-    patch_lm_head = f"{patch_lm_head}_smoke_test" if smoke_test else patch_lm_head
 
     return (
         base_experiments_dir
@@ -638,14 +627,18 @@ def main(cfg):
         )
     else:
         both_directions_path = models_dir / cfg.paths.both_directions_parent
-    if cfg.paths.one_direction_checkpoint is not None:
-        one_direction_path = (
-            models_dir
-            / cfg.paths.one_direction_parent
-            / cfg.paths.one_direction_checkpoint
-        )
-    else:
-        one_direction_path = models_dir / cfg.paths.one_direction_parent
+
+    # TODO: This is also an ugly hack to deal with counterfact experiments
+    if hasattr(cfg.paths, "one_direction_parent"):
+        checkpoint = getattr(cfg.paths, "one_direction_checkpoint", None)
+        if checkpoint is not None:
+            one_direction_path = (
+                models_dir / cfg.paths.one_direction_parent / checkpoint
+            )
+        elif cfg.paths.one_direction_parent is not None:
+            one_direction_path = models_dir / cfg.paths.one_direction_parent
+        else:
+            one_direction_path = None
 
     # Derive patch description from filename
     patch_config_filename = cfg.patch_config_filename
@@ -654,15 +647,10 @@ def main(cfg):
         patch_description = patch_description.split("config_patches_")[1]
 
     # Set up directories
-    metadata_path = (
-        DATA_DIR
-        / cfg.paths.dataset_name
-        / cfg.paths.dataset_dir
-        / "metadata"
-        / "metadata.jsonl"
-    )
-
-    if cfg.paths.experiments_dir_addendum:
+    if (
+        hasattr(cfg.paths, "experiments_dir_addendum")
+        and cfg.paths.experiments_dir_addendum
+    ):
         base_experiments_dir = EXPERIMENTS_DIR / cfg.paths.experiments_dir_addendum
     else:
         base_experiments_dir = EXPERIMENTS_DIR
@@ -692,13 +680,13 @@ def main(cfg):
         hyperparams_dir = "no_patching"
 
     if cfg.model.patch_direction == "sft2pre":
-        pretrained = MODEL_TO_HFID[cfg.model.pretrained]
-        llm_sft, _, _ = model_factory(str(both_directions_path))
-        llm_pretrained, tokenizer, _ = model_factory(pretrained)
-
         LOGGER.info(f"Loading donor model from {both_directions_path}")
+        llm_sft, _, _ = model_factory(str(both_directions_path))
         llm_donor_base = llm_sft
+
+        pretrained = MODEL_TO_HFID[cfg.model.pretrained]
         LOGGER.info(f"Loading recipient model from {pretrained}")
+        llm_pretrained, tokenizer, _ = model_factory(pretrained)
         llm_recipient_base = llm_pretrained
     elif cfg.model.patch_direction == "pre2sft":
         pretrained = MODEL_TO_HFID[cfg.model.pretrained]
@@ -709,19 +697,82 @@ def main(cfg):
         llm_donor_base = llm_pretrained
         LOGGER.info(f"Loading recipient model from {both_directions_path}")
         llm_recipient_base = llm_sft
-    # TODO: This setup is not great and will need to be fixed for these experiments
     elif cfg.model.patch_direction == "both2one":
         LOGGER.info(f"Loading donor model from {both_directions_path}")
         llm_donor_base, tokenizer, _ = model_factory(str(both_directions_path))
         LOGGER.info(f"Loading recipient model from {one_direction_path}")
         llm_recipient_base, _, _ = model_factory(str(one_direction_path))
+    elif cfg.model.patch_direction == "hybrid":
+        LOGGER.info(
+            f"Loading donor models from {both_directions_path} and {one_direction_path} for hybrid experiment"
+        )
+        # Note: This is an abuse of notation and variable names to run the hybrid experiment
+        # "one_direction_path" is the model trained on the task
+        # "both_directions_path" is the model trained on the specific relations we are looking for
 
-    with open(metadata_path, "r") as f:
-        metadata = [json.loads(line) for line in f]
+        llm_task, _, _ = model_factory(str(one_direction_path))
+        llm_relation, _, _ = model_factory(str(both_directions_path))
+        llm_hybrid = copy.deepcopy(llm_task)
+
+        model_config = MODEL_CONFIGS[cfg.model.pretrained]
+        n_layers = len(get_attr(llm_task, model_config["layers"]))
+        half_n = n_layers // 2
+
+        # Create the hybrid model
+        for layer_idx in range(half_n, n_layers):
+            # Patch attention output projection ("O" matrix)
+            patch_component(
+                llm_donor=llm_relation,
+                llm_recipient=llm_hybrid,
+                layers_path=model_config["layers"],
+                layer_idx=layer_idx,
+                component_path=model_config["components"]["o"]["component_path"],
+                log_patches=True,
+            )
+
+            # Patch the feedforward network
+            patch_component(
+                llm_donor=llm_relation,
+                llm_recipient=llm_hybrid,
+                layers_path=model_config["layers"],
+                layer_idx=layer_idx,
+                component_path=model_config["components"]["mlp_up"]["component_path"],
+                log_patches=True,
+            )
+            patch_component(
+                llm_donor=llm_relation,
+                llm_recipient=llm_hybrid,
+                layers_path=model_config["layers"],
+                layer_idx=layer_idx,
+                component_path=model_config["components"]["mlp_down"]["component_path"],
+                log_patches=True,
+            )
+
+        llm_donor_base = llm_task
+
+        pretrained = MODEL_TO_HFID[cfg.model.pretrained]
+        LOGGER.info(f"Loading recipient model from {pretrained}")
+        llm_pretrained, tokenizer, _ = model_factory(pretrained)
+        llm_recipient_base = llm_pretrained
+
+    # TODO: Ugly hack to run counterfact experiments
+    if cfg.paths.dataset_name == "counterfact":
+        dataset_cf = load_dataset("NeelNanda/counterfact-tracing")
+    else:
+        metadata_path = (
+            DATA_DIR
+            / cfg.paths.dataset_name
+            / cfg.paths.dataset_dir
+            / "metadata"
+            / "metadata.jsonl"
+        )
+        with open(metadata_path, "r") as f:
+            metadata = [json.loads(line) for line in f]
 
     model_config = MODEL_CONFIGS[cfg.model.pretrained]
     n_layers = len(get_attr(llm_recipient_base, model_config["layers"]))
-    limit = 30 if smoke_test else None
+    limit = cfg.n_examples if hasattr(cfg, "n_examples") else None
+    limit = 30 if smoke_test else limit
 
     movie_patches = set(
         [
@@ -736,39 +787,28 @@ def main(cfg):
         ]
     )
 
-    for template_name, test_template in vars(cfg.test_templates).items():
-        # TODO: hack to only run movie patches for sentence_3
-        if template_name != "sentence_3" and cfg.patch_config_filename in movie_patches:
-            continue
-
-        test_sentence_template = test_template.test_sentence_template
-        test_preposition = test_template.preposition
-        test_relation = test_template.relation
-        test_relation_preposition = test_template.relation_preposition
-
-        # Create nested directory for results
-        output_dir = experiment_timestamp_dir / template_name / hyperparams_dir
+    # TODO: Ugly hack to run counterfact experiments
+    if cfg.paths.dataset_name == "counterfact":
+        output_dir = experiment_timestamp_dir / "counterfact_sentence" / hyperparams_dir
         output_dir.mkdir(parents=True, exist_ok=True)
 
         log_patches = True
-
         results = []
-        for ex in tqdm(metadata[:limit]):
-            ex["preposition"] = test_preposition
-            ex["relation"] = test_relation
-            ex["relation_preposition"] = test_relation_preposition
-            inputs = get_inputs(ex, test_sentence_template, tokenizer)
+        for ex in tqdm(
+            dataset_cf["train"]
+            if limit is None
+            else dataset_cf["train"].select(range(limit))
+        ):
+            inputs = tokenizer(ex["prompt"], return_tensors="pt").to(DEVICE)
 
             if cfg.patching_flag:
+                # Need to get patches for counterfact...use "subject" for "first entity"
                 patches = get_patches(
-                    ex,
-                    cfg.patch_config,
-                    n_layers,
-                    tokenizer,
-                    inputs["input_ids"],
-                    test_sentence_template,
-                    override_layers=cfg.inference_config.override_layers,
+                    ex, cfg.patch_config, n_layers, tokenizer, inputs["input_ids"]
                 )
+                if patches is None:
+                    continue
+
                 probs, dropout_record = run_patched_inference(
                     inputs,
                     patches,
@@ -786,10 +826,11 @@ def main(cfg):
                     llm_recipient_base(inputs["input_ids"]).logits[0, -1], dim=-1
                 )
 
-            target_name = ex[cfg.analysis_config.target_key]
-            target_token_idx = tokenizer.encode(
-                " " + target_name, add_special_tokens=False
-            )[0]
+            # Note: Counterfact already has space in front of target name
+            target_name = ex["target_false"]
+            target_token_idx = tokenizer.encode(target_name, add_special_tokens=False)[
+                0
+            ]
             target_token = tokenizer.decode(target_token_idx)
 
             topk_probs, topk_indices = torch.topk(probs, cfg.analysis_config.top_k)
@@ -808,7 +849,7 @@ def main(cfg):
 
             results.append(
                 {
-                    "ex_id": ex["id"],
+                    "ex_id": ex["relation_id"],
                     "dropout_record": dropout_record,
                     "top_predictions": top_predictions,
                     "target": {
@@ -829,6 +870,121 @@ def main(cfg):
         LOGGER.info(f"Saving results to {output_dir / 'results.json'}")
         with open(output_dir / "results.json", "w") as f:
             json.dump(results_with_configs, f, indent=2)
+    else:
+        for template_name, test_template in vars(cfg.test_templates).items():
+            # TODO: hack to only run movie patches for sentence_3
+            if (
+                template_name != "sentence_3"
+                and cfg.patch_config_filename in movie_patches
+            ):
+                continue
+
+            test_sentence_template = test_template.test_sentence_template
+            test_preposition = test_template.preposition
+            test_relation = test_template.relation
+            test_relation_preposition = test_template.relation_preposition
+
+            # Create nested directory for results
+            output_dir = experiment_timestamp_dir / template_name / hyperparams_dir
+            output_dir.mkdir(parents=True, exist_ok=True)
+
+            log_patches = True
+
+            results = []
+            for ex in tqdm(metadata[:limit]):
+                ex["preposition"] = test_preposition
+                ex["relation"] = test_relation
+                ex["relation_preposition"] = test_relation_preposition
+                inputs = get_inputs(ex, test_sentence_template, tokenizer)
+
+                if cfg.patching_flag:
+                    patches = get_patches(
+                        ex,
+                        cfg.patch_config,
+                        n_layers,
+                        tokenizer,
+                        inputs["input_ids"],
+                        test_sentence_template,
+                    )
+                    if patches is None:
+                        continue
+                    # TODO: Horrible hack to run the hybrid experiment...
+                    if cfg.model.patch_direction == "hybrid":
+                        LOGGER.info("Running hybrid patching")
+                        probs, dropout_record = run_patched_inference(
+                            inputs,
+                            patches,
+                            llm_donor_base,
+                            llm_recipient_base,
+                            model_config,
+                            tokenizer,
+                            **vars(cfg.inference_config),
+                            log_patches=log_patches,
+                            hybrid_experiment=True,
+                            llm_hybrid=llm_hybrid,
+                        )
+                        log_patches = False
+                    else:
+                        probs, dropout_record = run_patched_inference(
+                            inputs,
+                            patches,
+                            llm_donor_base,
+                            llm_recipient_base,
+                            model_config,
+                            tokenizer,
+                            **vars(cfg.inference_config),
+                            log_patches=log_patches,
+                        )
+                        log_patches = False
+                else:
+                    dropout_record = {"layers": []}
+                    probs = torch.softmax(
+                        llm_recipient_base(inputs["input_ids"]).logits[0, -1], dim=-1
+                    )
+
+                target_name = ex[cfg.analysis_config.target_key]
+                target_token_idx = tokenizer.encode(
+                    " " + target_name, add_special_tokens=False
+                )[0]
+                target_token = tokenizer.decode(target_token_idx)
+
+                topk_probs, topk_indices = torch.topk(probs, cfg.analysis_config.top_k)
+                target_token_prob = probs[target_token_idx].item()
+
+                top_predictions = [
+                    {
+                        "token_id": idx,
+                        "token": tokenizer.decode([idx]),
+                        "probability": prob,
+                    }
+                    for prob, idx in zip(topk_probs.tolist(), topk_indices.tolist())
+                ]
+
+                target_token_rank = (probs > target_token_prob).sum().item()
+
+                results.append(
+                    {
+                        "ex_id": ex["id"],
+                        "dropout_record": dropout_record,
+                        "top_predictions": top_predictions,
+                        "target": {
+                            "token": target_token,
+                            "token_idx": target_token_idx,
+                            "token_prob": target_token_prob,
+                            "token_rank": target_token_rank,
+                        },
+                    }
+                )
+
+            results_with_configs = {
+                "inference_config": namespace_to_dict(cfg.inference_config),
+                "patch_config": namespace_to_dict(cfg.patch_config),
+                "results": results,
+            }
+
+            LOGGER.info(f"Saving results to {output_dir / 'results.json'}")
+            with open(output_dir / "results.json", "w") as f:
+                json.dump(results_with_configs, f, indent=2)
 
 
 if __name__ == "__main__":
@@ -842,8 +998,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "--patch-config",
         type=str,
-        default="all_tokens_attn_ffn_all.yaml",
-        help="Path to the patch config file",
+        default="fe_lt.yaml",
+        help="Path to the patch config file (optional if included in experiment config)",
     )
     parser.add_argument(
         "--timestamp",
@@ -861,19 +1017,22 @@ if __name__ == "__main__":
 
     if not args.experiment_config.endswith(".yaml"):
         args.experiment_config += ".yaml"
-    if not args.patch_config.endswith(".yaml"):
+    if args.patch_config and not args.patch_config.endswith(".yaml"):
         args.patch_config += ".yaml"
 
     experiment_config_path = EXPERIMENTS_CONFIG_DIR / args.experiment_config
-    patch_config_path = PATCH_CONFIG_DIR / args.patch_config
+    patch_config_path = (
+        PATCH_CONFIG_DIR / args.patch_config if args.patch_config else None
+    )
     LOGGER.info(f"Running experiments with experiment config: {experiment_config_path}")
-    LOGGER.info(f"Running experiments with patch config: {patch_config_path}")
+    if patch_config_path:
+        LOGGER.info(f"Running experiments with patch config: {patch_config_path}")
 
     cfg = load_experiment_config(
         experiment_config_path,
         patch_config_path,
         timestamp=args.timestamp,
-        patch_filename=args.patch_config.split("/")[-1],
+        patch_filename=args.patch_config.split("/")[-1] if args.patch_config else None,
         overrides=args.override,
     )
 

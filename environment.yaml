@@ -1,4 +1,4 @@
-name: kp
+name: kg
 channels:
   - nvidia
   - defaults
@@ -12,10 +12,8 @@ dependencies:
   - pip:
       - -e . # install current directory as package, package config is in pyproject.toml
       - accelerate==1.0.0
-      - deepspeed
       - faker==21.0.0
       - numpy
-      - spacy
       - datasets==3.0.1
       - matplotlib
       - openai==1.52.0

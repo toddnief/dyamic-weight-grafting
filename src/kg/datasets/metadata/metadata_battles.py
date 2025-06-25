@@ -1,7 +1,7 @@
 import random
 
-from kp.utils.constants import TEMPLATES_DIR
-from kp.utils.utils_io import load_jsonl
+from kg.utils.constants import TEMPLATES_DIR
+from kg.utils.utils_io import load_jsonl
 
 
 def create_battles_metadata(
