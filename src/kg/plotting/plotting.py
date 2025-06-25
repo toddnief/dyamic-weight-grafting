@@ -525,7 +525,7 @@ def plot_metric(
                     plt.tight_layout()
 
                     if save:
-                        stamp = datetime.now().strftime("%Y%m%d‑%H%M%S")
+                        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
                         fname = (
                             f"{metric_key}_{dataset_name}_{sentence_id}_"
                             f"{model_name}" + f"_{lm_head_setting}" + f"_{stamp}.png"
