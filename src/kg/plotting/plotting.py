@@ -276,6 +276,11 @@ PATCH_MAPPING = {
     "ffn": ("one_component", "FFN"),
     "o_ffn_up": ("ffn_comp", "O+FFN-UP"),
     "o_ffn_down": ("ffn_comp", "O+FFN-DOWN"),
+    "attn_o_ffn_no_fe": ("single_token", "HYBRID (NO FE)"),
+    "attn_o_ffn_full_fe": ("multi_token", "HYBRID (FE FULL)"),
+    "attn_o_ffn_fe_attn": ("multi_token", "HYBRID (FE ATTN)"),
+    "attn_o_ffn_fe_ffn": ("multi_token", "HYBRID (FE FFN)"),
+    "attn_o_ffn_fe_o_ffn": ("multi_token", "HYBRID (FE O+FFN)"),
 }
 
 # Define the order for the buckets
@@ -514,7 +519,7 @@ def plot_metric(
                             f"{yval:.2f}",
                             ha="center",
                             va="bottom",
-                            fontsize=font_size-2,
+                            fontsize=font_size - 2,
                         )
 
                     plt.tight_layout()
