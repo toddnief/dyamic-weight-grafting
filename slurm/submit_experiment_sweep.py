@@ -244,7 +244,7 @@ DROPOUT_UNIT = "layer"
 DROPOUT_STRATEGY = "count"
 
 ### RUN SETTINGS TO CHANGE ###
-SMOKE_TEST = True
+SMOKE_TEST = False
 SINGLE_RUN = True
 EXPERIMENT_TYPE = "hybrid"  # choices: standard,hybrid, sft, pre
 N_EXAMPLES = 1000
@@ -256,7 +256,7 @@ SWEEP_DATASETS = ["fake_movies_real_actors_B"]
 
 # Update this
 # all_models: ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
-SWEEP_MODELS = ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
+SWEEP_MODELS = ["gemma", "llama3"]
 models_smoke_test = ["gemma"]
 
 main_patch_configs = [
@@ -269,15 +269,15 @@ main_patch_configs = [
     "not_lt.yaml",
 ]
 component_patch_configs = [
-    "no_patching.yaml",
-    "attn_ffn.yaml",
-    "attn_o.yaml",
+    # "no_patching.yaml",
+    # "attn_ffn.yaml",
+    # "attn_o.yaml",
     "attn_o_ffn.yaml",
-    "o.yaml",
-    "o_ffn.yaml",
-    "o_ffn_up.yaml",
-    "o_ffn_down.yaml",
-    "ffn.yaml",
+    # "o.yaml",
+    # "o_ffn.yaml",
+    # "o_ffn_up.yaml",
+    # "o_ffn_down.yaml",
+    # "ffn.yaml",
 ]
 patch_configs_smoke_test = ["no_patching.yaml", "fe.yaml"]
 # TODO: ugly...
@@ -315,13 +315,13 @@ OVERRIDE_PATCH_COMPONENTS_BOOLEAN = True
 OVERRIDE_PATCH_COMPONENTS = {
     "first_actor": {
         "embeddings": False,
-        "q": True,
-        "k": True,
-        "v": True,
+        "q": False,
+        "k": False,
+        "v": False,
         "o": True,
-        "gate": False,
-        "mlp_up": False,
-        "mlp_down": False,
+        "gate": True,
+        "mlp_up": True,
+        "mlp_down": True,
         "ln_1": False,
         "ln_2": False,
     },
