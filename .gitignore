@@ -11,3 +11,4 @@ v1.5/
 .env
 wandb/*
 *.egg-info
+*imdb_cache*
