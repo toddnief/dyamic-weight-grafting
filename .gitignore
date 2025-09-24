@@ -12,3 +12,4 @@ v1.5/
 wandb/*
 *.egg-info
 *imdb_cache*
+.DS_Store
