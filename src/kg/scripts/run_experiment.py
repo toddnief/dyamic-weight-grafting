@@ -26,6 +26,7 @@ from kg.utils.utils_io import load_experiment_config, namespace_to_dict
 
 MODEL_CONFIGS = {
     "gemma": {
+        "name": "gemma",
         "layers": "model.layers",
         "components": {
             "ln_1": {"component_path": "input_layernorm"},
@@ -43,6 +44,7 @@ MODEL_CONFIGS = {
         "lm_head": {"component_path": "lm_head"},
     },
     "pythia-2.8b": {
+        "name": "pythia",
         "layers": "gpt_neox.layers",
         "components": {
             "ln_1": {"component_path": "input_layernorm"},
@@ -81,6 +83,7 @@ MODEL_CONFIGS = {
         },
     },
     "gpt2-xl": {
+        "name": "gpt2-xl",
         "layers": "transformer.h",
         "components": {
             "ln_1": {"component_path": "ln_1"},
@@ -98,6 +101,7 @@ MODEL_CONFIGS = {
         "lm_head": {"component_path": "lm_head"},
     },
     "llama3": {
+        "name": "llama3",
         "layers": "model.layers",
         "components": {
             "ln_1": {"component_path": "input_layernorm"},
@@ -115,6 +119,7 @@ MODEL_CONFIGS = {
         "lm_head": {"component_path": "lm_head"},
     },
     "olmo": {
+        "name": "olmo",
         "layers": "model.transformer.blocks",
         "components": {
             "ln_1": {"component_path": "attn_norm"},
@@ -557,9 +562,9 @@ def run_patched_inference(
                 kv_cache = patched_output.past_key_values
 
     if patch_lm_head:
-        final_ln = get_attr(llm_donor, model_config["ln_f"]["component_path"])
+        # Note: all of the models norm the hidden states before the lm head
         lm_head = get_attr(llm_donor, model_config["lm_head"]["component_path"])
-        logits = lm_head(final_ln(patched_output.hidden_states[-1]))
+        logits = lm_head(patched_output.hidden_states[-1])
     else:
         logits = patched_output.logits
 

@@ -16,8 +16,8 @@ model_dirs = {
             "b2a": "B2A_2025-05-10_03-00-47",
         },
         "fake_movies_real_actors": {
-            # "both": "all_2025-05-02_16-30-15", # old overfit model
-            "both": "all_2025-06-13_10-17-33",  # new model with owt & imdb
+            "both": "all_2025-05-02_16-30-15",  # old overfit model
+            # "both": "all_2025-06-13_10-17-33",  # new model with owt & imdb
             "a2b": "A2B_2025-05-10_03-24-29",
             "b2a": "B2A_2025-05-10_03-24-29",
         },
@@ -246,17 +246,17 @@ DROPOUT_STRATEGY = "count"
 ### RUN SETTINGS TO CHANGE ###
 SMOKE_TEST = False
 SINGLE_RUN = True
-EXPERIMENT_TYPE = "hybrid"  # choices: standard,hybrid, sft, pre
+EXPERIMENT_TYPE = "standard"  # choices: standard,hybrid, sft, pre
 N_EXAMPLES = 1000
 
 ### SWEEP SETTINGS ###
 # Update this
 # all_datasets: ["fake_movies_fake_actors", "fake_movies_real_actors", "real_movies_real_actors", "counterfact", "real_movies_real_actors_shuffled"]
-SWEEP_DATASETS = ["fake_movies_real_actors_B"]
+SWEEP_DATASETS = ["fake_movies_real_actors"]
 
 # Update this
 # all_models: ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
-SWEEP_MODELS = ["gemma", "llama3"]
+SWEEP_MODELS = ["gemma", "gpt2-xl", "llama3", "pythia-2.8b"]
 models_smoke_test = ["gemma"]
 
 main_patch_configs = [
@@ -267,6 +267,11 @@ main_patch_configs = [
     "fe_lt_complement.yaml",
     "not_fe.yaml",
     "not_lt.yaml",
+    # movie experiments
+    "m.yaml",
+    "m_lt.yaml",
+    "fe_m.yaml",
+    "fe_m_lt.yaml",
 ]
 component_patch_configs = [
     # "no_patching.yaml",
@@ -281,7 +286,7 @@ component_patch_configs = [
 ]
 patch_configs_smoke_test = ["no_patching.yaml", "fe.yaml"]
 # TODO: ugly...
-patch_configs_smoke_test = ["attn_o_ffn.yaml", "o_ffn.yaml"]
+# patch_configs_smoke_test = ["attn_o_ffn.yaml", "o_ffn.yaml"]
 # Check this
 # TODO: ugly...
 SWEEP_PATCH_CONFIGS = (
@@ -299,7 +304,7 @@ if SWEEP_DATASETS == ["counterfact"]:
     sweep_patch_config_dir = "patch_configs_cf"
 
 # Update this
-OVERRIDE_PATCH_LAYERS_BOOLEAN = True
+OVERRIDE_PATCH_LAYERS_BOOLEAN = False
 OVERRIDE_PATCH_LAYERS = {
     "first_actor": [
         "first_quarter",
@@ -311,7 +316,7 @@ OVERRIDE_PATCH_LAYERS = {
 }
 
 # Update this
-OVERRIDE_PATCH_COMPONENTS_BOOLEAN = True
+OVERRIDE_PATCH_COMPONENTS_BOOLEAN = False
 OVERRIDE_PATCH_COMPONENTS = {
     "first_actor": {
         "embeddings": False,
@@ -334,7 +339,7 @@ LM_HEAD_CONFIGS = ["never"]
 
 # Update this
 # all_test_templates: ["sentence_1", "sentence_2", "sentence_3"]
-SELECTED_TEST_TEMPLATES = ["sentence_1"]
+SELECTED_TEST_TEMPLATES = ["sentence_3"]
 
 ### Settings logic ###
 if EXPERIMENT_TYPE == "hybrid":
@@ -410,7 +415,7 @@ for model, dataset_name, patch, lm_head_cfg in itertools.product(
                 )
 
     for direction in directions:
-        if test_templates is type(dict):
+        if isinstance(test_templates, dict):
             test_templates = {k: test_templates[k] for k in SELECTED_TEST_TEMPLATES}
         cfg = {
             "smoke_test": SMOKE_TEST,

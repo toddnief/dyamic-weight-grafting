@@ -184,7 +184,7 @@ def parse_timestamp(dir_name: str):
     return max(datetime.strptime(ts, "%Y-%m-%d_%H-%M-%S") for ts in matches)
 
 
-def organize_results(all_results_files, base_dir: Path):
+def organize_results(all_results_files, base_dir: Path, top_k: int = 5):
     """
     Build nested dict:
         organized[dataset][lm_head_setting][model][sentence_id][patch] = metrics_dict
@@ -202,7 +202,7 @@ def organize_results(all_results_files, base_dir: Path):
             continue
         parsed_ok += 1
 
-        metrics = calculate_metrics_from_file(fp)
+        metrics = calculate_metrics_from_file(fp, top_k=top_k)
         if metrics is None:
             print(f"Skipping unreadable {fp}")
             continue
