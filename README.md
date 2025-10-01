@@ -1,3 +1,7 @@
+## Two Streams of Knowledge Retrieval: Enriching & Recalling in Transformers
+
+Paper link: [arXiv](https://arxiv.org/abs/2506.20746)
+
 ## Create and activate the conda environment
 
 Install the environment from the provided file:
